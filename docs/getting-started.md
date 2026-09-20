@@ -60,10 +60,14 @@ and set:
 | Property | Value |
 | --- | --- |
 | `PF_RATES_API_KEY` | the `X-API-Key` used to call `pf-rates`'s export endpoint |
-| `EXPORT_DRIVE_FILE_ID` | the Google Drive file ID of the exported CSV |
+| `EXPORT_DRIVE_FILE_ID` | the Google Drive file ID of the exported **combined** CSV (`financial-data.csv`, from `POST /exports/financial-data`) |
 
 These replace the values that were previously hardcoded in source. See
 [`api.md`](api.md) for how the code reads them.
+
+The spreadsheet must have both an `EXCH_RATE` tab and an `ECON_INDEX` tab
+(same 5-column layout: id, code, date, value, last_modified_at) --
+`updateExchangeRates()` upserts into both from the one combined CSV.
 
 ## Run tests
 

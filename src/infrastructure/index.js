@@ -25,14 +25,16 @@ function getConfig(propertiesService) {
 }
 
 /**
- * Triggers the pf-rates CSV export endpoint (fire-and-report — the caller
- * decides what to do with a failed/erroring call).
+ * Triggers the pf-rates combined financial-data export endpoint
+ * (fire-and-report -- the caller decides what to do with a failed/erroring
+ * call). Covers both exchange rates and economic indices in one CSV; see
+ * pf-rates/docs/api.md#export-combined-exchange-rate--economic-index-data-to-google-drive.
  * @param {GoogleAppsScript.URL_Fetch.UrlFetchApp} urlFetchApp
  * @param {{apiBaseUrl: string, apiKey: string}} config
  * @param {{lookback_days: number, forward_days: number}} payload
  * @returns {{statusCode: number, body: string}}
  */
-function triggerRatesExport(urlFetchApp, config, payload) {
+function triggerFinancialDataExport(urlFetchApp, config, payload) {
   var requestOptions = {
     method: "post",
     contentType: "application/json",
@@ -41,7 +43,7 @@ function triggerRatesExport(urlFetchApp, config, payload) {
     muteHttpExceptions: true,
   };
 
-  var response = urlFetchApp.fetch(config.apiBaseUrl + "/exchange-rates/export", requestOptions);
+  var response = urlFetchApp.fetch(config.apiBaseUrl + "/exports/financial-data", requestOptions);
   return {
     statusCode: response.getResponseCode(),
     body: response.getContentText(),
@@ -63,8 +65,8 @@ function fetchCsvRows(driveApp, utilities, fileId) {
 
 /**
  * Reads the current data rows (excluding the header) of a sheet, assuming
- * the 5-column exchange-rate layout: id, currency_code, rate_date,
- * value_clp, last_modified_at.
+ * the shared 5-column financial-data layout used by both the EXCH_RATE and
+ * ECON_INDEX tabs: id, code, date, value, last_modified_at.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @returns {Array<Array<*>>}
  */
@@ -109,7 +111,7 @@ function showAlert(spreadsheetApp, message) {
 if (typeof module !== "undefined") {
   module.exports = {
     getConfig: getConfig,
-    triggerRatesExport: triggerRatesExport,
+    triggerFinancialDataExport: triggerFinancialDataExport,
     fetchCsvRows: fetchCsvRows,
     readExistingRows: readExistingRows,
     writeRows: writeRows,

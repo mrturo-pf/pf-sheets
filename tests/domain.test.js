@@ -5,6 +5,8 @@ const {
   parseCsvDataRow,
   buildRegistryIndex,
   computeUpsertPlan,
+  resolveCombinedCsvColumns,
+  splitCombinedCsvBySeriesType,
 } = require("../src/domain");
 
 const TZ = "America/Santiago";
@@ -223,5 +225,116 @@ describe("computeUpsertPlan", () => {
 
     const clpRow = plan.rows.find((row) => row[1] === "CLP");
     expect(clpRow[0]).toBe(4); // auto-incremented past the highest existing id (3)
+  });
+});
+
+describe("resolveCombinedCsvColumns", () => {
+  it("resolves all four required columns regardless of case/whitespace", () => {
+    const result = resolveCombinedCsvColumns([" Series_Type ", "CODE", "period_date", "Value"]);
+    expect(result.isComplete).toBe(true);
+    expect(result.columns).toEqual({ seriesType: 0, code: 1, date: 2, value: 3 });
+  });
+
+  it("flags isComplete=false when a required column is missing", () => {
+    const result = resolveCombinedCsvColumns(["series_type", "code", "period_date"]);
+    expect(result.isComplete).toBe(false);
+  });
+});
+
+describe("splitCombinedCsvBySeriesType", () => {
+  it("routes EXCHANGE_RATE and ECONOMIC_INDEX rows into separate legacy-shaped CSVs", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["EXCHANGE_RATE", "USD", "2026-01-14", "950"],
+      ["ECONOMIC_INDEX", "IPC_CL", "2026-01-14", "125.5"],
+      ["EXCHANGE_RATE", "EUR", "2026-01-14", "1020"],
+    ];
+
+    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+
+    expect(result.isComplete).toBe(true);
+    expect(result.skippedRowNumbers).toEqual([]);
+    expect(result.exchangeRateCsvRows).toEqual([
+      ["currency_code", "rate_date", "value_clp"],
+      ["USD", "2026-01-14", "950"],
+      ["EUR", "2026-01-14", "1020"],
+    ]);
+    expect(result.economicIndexCsvRows).toEqual([
+      ["currency_code", "rate_date", "value_clp"],
+      ["IPC_CL", "2026-01-14", "125.5"],
+    ]);
+  });
+
+  it("is case-insensitive on the series_type value", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["economic_index", "IPC_CL", "2026-01-14", "125.5"],
+    ];
+
+    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+
+    expect(result.economicIndexCsvRows).toEqual([
+      ["currency_code", "rate_date", "value_clp"],
+      ["IPC_CL", "2026-01-14", "125.5"],
+    ]);
+  });
+
+  it("skips rows with an unrecognized series_type and reports their line number", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["EXCHANGE_RATE", "USD", "2026-01-14", "950"],
+      ["SOMETHING_ELSE", "XYZ", "2026-01-14", "1"],
+    ];
+
+    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+
+    expect(result.skippedRowNumbers).toEqual([3]);
+    expect(result.exchangeRateCsvRows).toHaveLength(2);
+    expect(result.economicIndexCsvRows).toHaveLength(1); // header only
+  });
+
+  it("skips rows with too few columns and reports their line number", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["EXCHANGE_RATE", "USD", "2026-01-14"],
+    ];
+
+    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+
+    expect(result.skippedRowNumbers).toEqual([2]);
+  });
+
+  it("returns isComplete=false and empty results when the header is missing columns", () => {
+    const combinedCsvRows = [
+      ["series_type", "code"],
+      ["EXCHANGE_RATE", "USD"],
+    ];
+
+    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+
+    expect(result.isComplete).toBe(false);
+    expect(result.exchangeRateCsvRows).toEqual([["currency_code", "rate_date", "value_clp"]]);
+    expect(result.economicIndexCsvRows).toEqual([["currency_code", "rate_date", "value_clp"]]);
+  });
+
+  it("produces output that computeUpsertPlan can consume unchanged (end-to-end)", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["ECONOMIC_INDEX", "IPC_CL", "2026-01-14", "125.5"],
+      ["ECONOMIC_INDEX", "IPC_CL", "2026-01-15", "125.5"],
+    ];
+    const split = splitCombinedCsvBySeriesType(combinedCsvRows);
+    const columnResolution = resolveCsvColumns(split.economicIndexCsvRows[0]);
+
+    const plan = computeUpsertPlan({
+      existingRows: [],
+      csvRows: split.economicIndexCsvRows,
+      columns: columnResolution.columns,
+      timeZone: TZ,
+      executionTimestamp: new Date("2026-01-15T12:00:00Z"),
+    });
+
+    expect(plan.insertedCount).toBe(2);
+    expect(plan.rows.map((row) => row[1])).toEqual(["IPC_CL", "IPC_CL"]);
   });
 });

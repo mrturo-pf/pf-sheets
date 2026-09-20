@@ -18,6 +18,7 @@
  */
 
 var EXCH_RATE_SHEET_NAME = "EXCH_RATE";
+var ECON_INDEX_SHEET_NAME = "ECON_INDEX";
 
 /**
  * Creates the "Rate Values" custom menu when the spreadsheet opens.
@@ -27,28 +28,82 @@ function onOpen() {
 }
 
 /**
- * Synchronizes exchange rates: triggers the pf-rates export, reads the
- * resulting CSV from Drive regardless of that call's outcome, and
- * performs an incremental upsert into the EXCH_RATE sheet tab. See
- * docs/api.md for the full behavior contract.
+ * Syncs one sheet tab against its already-split, legacy-shaped CSV rows
+ * (currency_code,rate_date,value_clp -- see splitCombinedCsvBySeriesType).
+ * Both EXCH_RATE and ECON_INDEX share the exact same upsert algorithm and
+ * 5-column layout, so this one helper drives both instead of duplicating
+ * the load/compute/write sequence per tab.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet
+ * @param {string} sheetName
+ * @param {Array<Array<*>>} legacyCsvRows
+ * @returns {{updatedCount: number, insertedCount: number, untouchedCount: number}|null} null if the tab doesn't exist (alert already shown)
+ */
+function syncSheetTab(spreadsheet, sheetName, legacyCsvRows) {
+  var sheet = spreadsheet.getSheetByName(sheetName);
+  if (!sheet) {
+    var notFoundMessage = 'Sheet tab "' + sheetName + '" was not found in this spreadsheet.';
+    console.error(notFoundMessage);
+    showAlert(SpreadsheetApp, notFoundMessage);
+    return null;
+  }
+
+  var columnResolution = resolveCsvColumns(legacyCsvRows[0]);
+  var existingRows = readExistingRows(sheet);
+  console.log('Loaded ' + existingRows.length + ' existing row(s) from "' + sheetName + '".');
+
+  var plan = computeUpsertPlan({
+    existingRows: existingRows,
+    csvRows: legacyCsvRows,
+    columns: columnResolution.columns,
+    timeZone: spreadsheet.getSpreadsheetTimeZone(),
+    executionTimestamp: new Date(),
+  });
+
+  if (plan.skippedRowNumbers.length > 0) {
+    console.warn(
+      '"' + sheetName + '": skipped ' + plan.skippedRowNumbers.length + ' invalid row(s) at line(s): ' + plan.skippedRowNumbers.join(", ")
+    );
+  }
+
+  if (plan.updatedCount > 0 || plan.insertedCount > 0) {
+    writeRows(sheet, plan.rows);
+    console.log('"' + sheetName + '" grid updated: ' + plan.rows.length + ' total row(s) written.');
+  } else {
+    console.log('"' + sheetName + '": no updates or inserts needed - sheet write skipped.');
+  }
+
+  return { updatedCount: plan.updatedCount, insertedCount: plan.insertedCount, untouchedCount: plan.untouchedCount };
+}
+
+/**
+ * Synchronizes financial data: triggers the pf-rates combined export,
+ * reads the resulting CSV from Drive regardless of that call's outcome,
+ * splits it by series type, and performs an incremental upsert into both
+ * the EXCH_RATE and ECON_INDEX sheet tabs. See docs/api.md for the full
+ * behavior contract. Kept as `updateExchangeRates` (not renamed) so any
+ * existing menu/trigger binding to this exact function name keeps working
+ * -- it now covers both tabs internally instead of a parallel macro being
+ * added alongside it.
  */
 function updateExchangeRates() {
   var config = getConfig(PropertiesService);
 
   console.log(
-    'Starting exchange rates synchronization. Sheet="' +
+    'Starting financial data synchronization. Sheets="' +
       EXCH_RATE_SHEET_NAME +
+      '", "' +
+      ECON_INDEX_SHEET_NAME +
       '" DriveFileId="' +
       config.driveFileId +
       '"'
   );
 
-  // Step 1: trigger the pf-rates export — best-effort. Step 3 reads
-  // whatever CSV Drive currently has regardless of this call's outcome.
+  // Step 1: trigger the pf-rates combined export -- best-effort. Step 3
+  // reads whatever CSV Drive currently has regardless of this call's outcome.
   var apiStatusSummary = "";
   try {
     var startTime = new Date().getTime();
-    var exportResult = triggerRatesExport(UrlFetchApp, config, {
+    var exportResult = triggerFinancialDataExport(UrlFetchApp, config, {
       lookback_days: 90,
       forward_days: 30,
     });
@@ -66,17 +121,7 @@ function updateExchangeRates() {
     console.error("Exception while triggering the export: " + error);
   }
 
-  // Step 2: locate the target sheet tab.
-  var spreadsheet = getActiveSpreadsheet(SpreadsheetApp);
-  var sheet = spreadsheet.getSheetByName(EXCH_RATE_SHEET_NAME);
-  if (!sheet) {
-    var notFoundMessage = 'Sheet tab "' + EXCH_RATE_SHEET_NAME + '" was not found in this spreadsheet.';
-    console.error(notFoundMessage);
-    showAlert(SpreadsheetApp, notFoundMessage);
-    return;
-  }
-
-  // Step 3: read + parse the CSV from Drive.
+  // Step 2: read + parse the combined CSV from Drive.
   var rawCsvRows;
   try {
     rawCsvRows = fetchCsvRows(DriveApp, Utilities, config.driveFileId);
@@ -95,46 +140,57 @@ function updateExchangeRates() {
     return;
   }
 
-  var columnResolution = resolveCsvColumns(rawCsvRows[0]);
-  console.log("Detected headers: [" + columnResolution.normalizedHeader.join(", ") + "]");
-  if (!columnResolution.isComplete) {
+  // Step 3: split the combined CSV by series type (pure -- see src/domain/).
+  var split = splitCombinedCsvBySeriesType(rawCsvRows);
+  console.log("Detected headers: [" + split.normalizedHeader.join(", ") + "]");
+  if (!split.isComplete) {
     var missingColumnsMessage =
-      "CSV is missing one or more required columns ('currency_code', 'rate_date', 'value_clp').";
+      "CSV is missing one or more required columns ('series_type', 'code', 'period_date', 'value').";
     console.error(missingColumnsMessage);
     showAlert(SpreadsheetApp, missingColumnsMessage);
     return;
   }
-
-  // Step 4 & 5: load existing rows and compute the upsert delta (pure —
-  // see src/domain/).
-  var existingRows = readExistingRows(sheet);
-  console.log('Loaded ' + existingRows.length + ' existing row(s) from "' + EXCH_RATE_SHEET_NAME + '".');
-
-  var plan = computeUpsertPlan({
-    existingRows: existingRows,
-    csvRows: rawCsvRows,
-    columns: columnResolution.columns,
-    timeZone: spreadsheet.getSpreadsheetTimeZone(),
-    executionTimestamp: new Date(),
-  });
-
-  if (plan.skippedRowNumbers.length > 0) {
+  if (split.skippedRowNumbers.length > 0) {
     console.warn(
-      "Skipped " + plan.skippedRowNumbers.length + " invalid CSV row(s) at line(s): " + plan.skippedRowNumbers.join(", ")
+      "Skipped " +
+        split.skippedRowNumbers.length +
+        " row(s) with an unrecognized/incomplete series_type at line(s): " +
+        split.skippedRowNumbers.join(", ")
     );
   }
 
-  // Step 6: commit changes to the grid, only if something actually changed.
-  if (plan.updatedCount > 0 || plan.insertedCount > 0) {
-    writeRows(sheet, plan.rows);
-    console.log("Sheet grid updated: " + plan.rows.length + " total row(s) written.");
-  } else {
-    console.log("No updates or inserts needed - sheet write skipped.");
+  // Step 4: locate both target sheets and upsert each one (pure planning
+  // logic shared via syncSheetTab -- see above).
+  var spreadsheet = getActiveSpreadsheet(SpreadsheetApp);
+  var exchangeRateSummary = syncSheetTab(spreadsheet, EXCH_RATE_SHEET_NAME, split.exchangeRateCsvRows);
+  if (!exchangeRateSummary) {
+    return;
+  }
+  var economicIndexSummary = syncSheetTab(spreadsheet, ECON_INDEX_SHEET_NAME, split.economicIndexCsvRows);
+  if (!economicIndexSummary) {
+    return;
   }
 
-  // Step 7: summarize.
+  // Step 5: summarize both tabs in one toast.
   var summaryMessage =
-    "[" + apiStatusSummary + "] Updated: " + plan.updatedCount + " | New: " + plan.insertedCount + " | Untouched: " + plan.untouchedCount;
+    "[" +
+    apiStatusSummary +
+    "] " +
+    EXCH_RATE_SHEET_NAME +
+    " -> Updated: " +
+    exchangeRateSummary.updatedCount +
+    " | New: " +
+    exchangeRateSummary.insertedCount +
+    " | Untouched: " +
+    exchangeRateSummary.untouchedCount +
+    ". " +
+    ECON_INDEX_SHEET_NAME +
+    " -> Updated: " +
+    economicIndexSummary.updatedCount +
+    " | New: " +
+    economicIndexSummary.insertedCount +
+    " | Untouched: " +
+    economicIndexSummary.untouchedCount;
   console.log(summaryMessage);
   spreadsheet.toast(summaryMessage, "Synchronization Complete", 7);
 }

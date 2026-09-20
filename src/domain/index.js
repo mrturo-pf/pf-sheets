@@ -13,6 +13,13 @@
 
 var REQUIRED_CSV_COLUMNS = ["currency_code", "rate_date", "value_clp"];
 
+// Combined pf-rates export (POST /exports/financial-data) header + series
+// discriminator values -- see pf-rates/docs/api.md for the authoritative
+// contract.
+var REQUIRED_COMBINED_CSV_COLUMNS = ["series_type", "code", "period_date", "value"];
+var SERIES_TYPE_EXCHANGE_RATE = "EXCHANGE_RATE";
+var SERIES_TYPE_ECONOMIC_INDEX = "ECONOMIC_INDEX";
+
 /**
  * Normalizes any date representation (a real Date, or a CSV/sheet string)
  * into a "YYYY-MM-DD" key. Real Dates are formatted using `timeZone` so the
@@ -191,6 +198,90 @@ function computeUpsertPlan(options) {
   };
 }
 
+/**
+ * Resolves the column indices for the combined-export CSV's required
+ * fields (series_type, code, period_date, value), tolerant of header
+ * case/whitespace -- mirrors resolveCsvColumns, one level up (four
+ * columns instead of three, plus the series-type discriminator).
+ * @param {string[]} headerRow
+ * @returns {{columns: {seriesType: number, code: number, date: number, value: number}, isComplete: boolean, normalizedHeader: string[]}}
+ */
+function resolveCombinedCsvColumns(headerRow) {
+  var normalizedHeader = headerRow.map(function (header) {
+    return String(header).trim().toLowerCase();
+  });
+  var columns = {
+    seriesType: normalizedHeader.indexOf(REQUIRED_COMBINED_CSV_COLUMNS[0]),
+    code: normalizedHeader.indexOf(REQUIRED_COMBINED_CSV_COLUMNS[1]),
+    date: normalizedHeader.indexOf(REQUIRED_COMBINED_CSV_COLUMNS[2]),
+    value: normalizedHeader.indexOf(REQUIRED_COMBINED_CSV_COLUMNS[3]),
+  };
+  var isComplete =
+    columns.seriesType !== -1 && columns.code !== -1 && columns.date !== -1 && columns.value !== -1;
+  return { columns: columns, isComplete: isComplete, normalizedHeader: normalizedHeader };
+}
+
+/**
+ * Splits a combined pf-rates export CSV (series_type,code,period_date,value)
+ * into two legacy-shaped CSVs (currency_code,rate_date,value_clp) -- one
+ * per series type. Downstream, each result feeds straight into the
+ * existing resolveCsvColumns/computeUpsertPlan pipeline unchanged -- both
+ * RAT_EXCH_RATE and RAT_ECON_INDEX end up in the exact same 5-column sheet
+ * layout (id, code, date, value, last_modified_at), so there is no second
+ * upsert algorithm to write or maintain.
+ *
+ * Rows with an unrecognized series_type (or too few columns) are skipped
+ * and their 1-based line numbers reported, mirroring computeUpsertPlan's
+ * own "skip and count" behavior for malformed rows rather than aborting
+ * the whole sync over one bad line.
+ * @param {Array<Array<*>>} combinedCsvRows
+ * @returns {{exchangeRateCsvRows: Array<Array<*>>, economicIndexCsvRows: Array<Array<*>>, isComplete: boolean, normalizedHeader: string[], skippedRowNumbers: number[]}}
+ */
+function splitCombinedCsvBySeriesType(combinedCsvRows) {
+  var resolution = resolveCombinedCsvColumns(combinedCsvRows[0] || []);
+  var exchangeRateCsvRows = [REQUIRED_CSV_COLUMNS.slice()];
+  var economicIndexCsvRows = [REQUIRED_CSV_COLUMNS.slice()];
+  var skippedRowNumbers = [];
+
+  if (!resolution.isComplete) {
+    return {
+      exchangeRateCsvRows: exchangeRateCsvRows,
+      economicIndexCsvRows: economicIndexCsvRows,
+      isComplete: false,
+      normalizedHeader: resolution.normalizedHeader,
+      skippedRowNumbers: skippedRowNumbers,
+    };
+  }
+
+  var columns = resolution.columns;
+  for (var i = 1; i < combinedCsvRows.length; i++) {
+    var row = combinedCsvRows[i];
+    if (!row || row.length < 4) {
+      skippedRowNumbers.push(i + 1);
+      continue;
+    }
+
+    var seriesType = String(row[columns.seriesType]).trim().toUpperCase();
+    var legacyRow = [row[columns.code], row[columns.date], row[columns.value]];
+
+    if (seriesType === SERIES_TYPE_EXCHANGE_RATE) {
+      exchangeRateCsvRows.push(legacyRow);
+    } else if (seriesType === SERIES_TYPE_ECONOMIC_INDEX) {
+      economicIndexCsvRows.push(legacyRow);
+    } else {
+      skippedRowNumbers.push(i + 1);
+    }
+  }
+
+  return {
+    exchangeRateCsvRows: exchangeRateCsvRows,
+    economicIndexCsvRows: economicIndexCsvRows,
+    isComplete: true,
+    normalizedHeader: resolution.normalizedHeader,
+    skippedRowNumbers: skippedRowNumbers,
+  };
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normalizeDateKey: normalizeDateKey,
@@ -199,5 +290,7 @@ if (typeof module !== "undefined") {
     parseCsvDataRow: parseCsvDataRow,
     buildRegistryIndex: buildRegistryIndex,
     computeUpsertPlan: computeUpsertPlan,
+    resolveCombinedCsvColumns: resolveCombinedCsvColumns,
+    splitCombinedCsvBySeriesType: splitCombinedCsvBySeriesType,
   };
 }

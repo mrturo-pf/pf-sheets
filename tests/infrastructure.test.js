@@ -1,6 +1,6 @@
 const {
   getConfig,
-  triggerRatesExport,
+  triggerFinancialDataExport,
   fetchCsvRows,
   readExistingRows,
   writeRows,
@@ -29,7 +29,7 @@ describe("getConfig", () => {
   });
 });
 
-describe("triggerRatesExport", () => {
+describe("triggerFinancialDataExport", () => {
   it("posts the payload with the X-API-Key header and returns status + body", () => {
     const fetchCalls = [];
     const fakeUrlFetchApp = {
@@ -42,7 +42,7 @@ describe("triggerRatesExport", () => {
       },
     };
 
-    const result = triggerRatesExport(
+    const result = triggerFinancialDataExport(
       fakeUrlFetchApp,
       { apiBaseUrl: "https://pf-rates.example.com", apiKey: "secret-key" },
       { lookback_days: 90, forward_days: 30 }
@@ -50,7 +50,7 @@ describe("triggerRatesExport", () => {
 
     expect(result).toEqual({ statusCode: 200, body: '{"ok":true}' });
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0].url).toBe("https://pf-rates.example.com/exchange-rates/export");
+    expect(fetchCalls[0].url).toBe("https://pf-rates.example.com/exports/financial-data");
     expect(fetchCalls[0].options.headers["X-API-Key"]).toBe("secret-key");
     expect(JSON.parse(fetchCalls[0].options.payload)).toEqual({ lookback_days: 90, forward_days: 30 });
     expect(fetchCalls[0].options.muteHttpExceptions).toBe(true);
