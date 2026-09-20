@@ -26,6 +26,26 @@ Push/merge to main
 [notify-success]
 ```
 
+## npm registry: public registry in CI, internal mirror only for local dev
+
+`.npmrc` at the repo root points `registry` at Walmart's internal Artifactory
+npm mirror (`npm.ci.artifacts.walmart.com`) — needed **locally**, on the
+corporate network/VPN, where the public npm registry returns `407 Proxy
+Authentication Required`. GitHub-hosted runners (`ubuntu-latest`) are the
+opposite: public internet only, no route to that internal host at all.
+
+First real run of this pipeline hit exactly that: `npm ci` reported success
+but actually hung trying to reach the unreachable internal registry, then hit
+a known npm bug (`Exit handler never called!`) that lets the step exit
+without fully populating `node_modules` — surfacing later, confusingly, as
+`sh: 1: eslint: not found` in the next step rather than as a registry/network
+error in the `npm ci` step itself.
+
+Fix: `deploy.yml` sets `NPM_CONFIG_REGISTRY: https://registry.npmjs.org` at
+the workflow level. npm env vars take precedence over `.npmrc`, so CI always
+uses the public registry regardless of what's committed in `.npmrc` for local
+developers — no conditional logic, no separate `.npmrc.ci` file needed.
+
 ## clasp version: pinned exactly, not a range
 
 `package.json` pins `"@google/clasp": "3.4.1"` **without a caret**. This is

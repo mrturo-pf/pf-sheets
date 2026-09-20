@@ -46,6 +46,15 @@ on:
 permissions:
   contents: read
 
+# GitHub-hosted runners (ubuntu-latest) are public and cannot reach
+# Walmart's internal Artifactory npm mirror configured in .npmrc for local
+# VPN-bound development (npm.ci.artifacts.walmart.com). Override the
+# registry to the public npm registry for every job so `npm ci` actually
+# installs packages here instead of hanging until npm gives up, silently
+# leaving node_modules incomplete (surfaced as "eslint: not found").
+env:
+  NPM_CONFIG_REGISTRY: https://registry.npmjs.org
+
 jobs:
   test:
     name: Test & Lint
