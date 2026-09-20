@@ -26,25 +26,41 @@ Push/merge to main
 [notify-success]
 ```
 
-## npm registry: public registry in CI, internal mirror only for local dev
+## npm registry: `package-lock.json` must resolve to the public registry
 
-`.npmrc` at the repo root points `registry` at Walmart's internal Artifactory
-npm mirror (`npm.ci.artifacts.walmart.com`) — needed **locally**, on the
-corporate network/VPN, where the public npm registry returns `407 Proxy
-Authentication Required`. GitHub-hosted runners (`ubuntu-latest`) are the
-opposite: public internet only, no route to that internal host at all.
+`.npmrc` points `registry` at Walmart's internal Artifactory npm mirror
+(`npm.ci.artifacts.walmart.com`) — needed **locally**, on the corporate
+network/VPN, where the public npm registry can return `407 Proxy
+Authentication Required` without it. GitHub-hosted runners (`ubuntu-latest`)
+are the opposite: public internet only, no route to that internal host.
 
-First real run of this pipeline hit exactly that: `npm ci` reported success
-but actually hung trying to reach the unreachable internal registry, then hit
-a known npm bug (`Exit handler never called!`) that lets the step exit
-without fully populating `node_modules` — surfacing later, confusingly, as
-`sh: 1: eslint: not found` in the next step rather than as a registry/network
-error in the `npm ci` step itself.
+The first real run of this pipeline failed on that mismatch, but not in the
+obvious way. `npm ci` (unlike `npm install`) **ignores the configured
+registry for packages that already have a `resolved` URL in the lockfile** —
+it fetches that literal URL. Since `package-lock.json` had been generated
+locally against the Walmart mirror, every single entry's `resolved` field
+pointed at `npm.ci.artifacts.walmart.com`. Setting
+`NPM_CONFIG_REGISTRY=https://registry.npmjs.org` at the workflow level (the
+first fix attempted) changed nothing — `npm ci` never even looked at it. The
+unreachable-host connection attempts hung until a known npm bug (`Exit
+handler never called!`) let the step exit anyway without fully populating
+`node_modules`, surfacing later, confusingly, as `sh: 1: eslint: not found`
+in the *next* step instead of a clear registry/network error in `npm ci`
+itself.
 
-Fix: `deploy.yml` sets `NPM_CONFIG_REGISTRY: https://registry.npmjs.org` at
-the workflow level. npm env vars take precedence over `.npmrc`, so CI always
-uses the public registry regardless of what's committed in `.npmrc` for local
-developers — no conditional logic, no separate `.npmrc.ci` file needed.
+Real fix: regenerate `package-lock.json` so every `resolved` URL points at
+the public registry — `rm -rf node_modules package-lock.json && \
+NPM_CONFIG_REGISTRY=https://registry.npmjs.org npm install`. `deploy.yml`
+still sets `NPM_CONFIG_REGISTRY` at the workflow level as defense-in-depth
+(it does matter for `npm install`/anything that re-resolves), but the
+lockfile is the actual source of truth `npm ci` reads from.
+
+**Gotcha for future `npm install`/`npm update`:** running them normally
+resolves through whatever `.npmrc` currently points at (the Walmart mirror),
+which silently reintroduces internal-mirror URLs into the lockfile for just
+the touched packages and reproduces this exact CI failure on the next push.
+Always force the public registry when the lockfile is going to change:
+`NPM_CONFIG_REGISTRY=https://registry.npmjs.org npm install <pkg>`.
 
 ## clasp version: pinned exactly, not a range
 
