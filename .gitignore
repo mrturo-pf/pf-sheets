@@ -1,0 +1,14 @@
+# Dependencies
+node_modules/
+
+# clasp-generated / auth artifacts — never versioned.
+# .clasp.json is always regenerated from clasp-targets/*.clasp.json by
+# scripts/push-target.sh; .clasprc.json holds the OAuth refresh token.
+.clasp.json
+.clasprc.json
+
+# OS cruft
+.DS_Store
+
+# Test/coverage output
+coverage/

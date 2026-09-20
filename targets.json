@@ -1,0 +1,6 @@
+[
+  {
+    "alias": "exchange-rates",
+    "config": "clasp-targets/exchange-rates.clasp.json"
+  }
+]

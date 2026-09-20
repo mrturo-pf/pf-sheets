@@ -1,0 +1,145 @@
+# ============================================================
+# pf-sheets — Apps Script deploy pipeline (clasp push)
+# ============================================================
+#
+# This is a repo-local workflow, NOT a caller into pf-common's
+# deploy-reusable.yml — that reusable is 100% Docker/Cloud Run and does not
+# apply here (there is no container, no Cloud Run service, no Cloud SQL).
+# See ../../docs/ci.md for the full rationale.
+#
+# ONE-TIME SETUP (not part of CI):
+#
+#   1. Generate the CLASP_CREDENTIALS secret content, from inside pf-sheets/:
+#        clasp_config_auth="$(pwd)/.clasprc.json" \
+#          npx clasp login --creds <path-to-client-secret.json> --no-localhost
+#      See ../../docs/ci.md for the full login flow (including the
+#      clasp 3.x "paste the full redirect URL" quirk).
+#
+#   2. Upload the resulting .clasprc.json content as the GitHub encrypted
+#      secret CLASP_CREDENTIALS (Settings -> Secrets and variables ->
+#      Actions -> New repository secret).
+#
+#   3. Create the "production" GitHub environment (Settings -> Environments
+#      -> New environment -> name it "production") and enable "Required
+#      reviewers". The gate-with-approval job pauses there.
+#
+#   4. (Optional) MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD /
+#      MAIL_FROM / MAIL_TO secrets, if you want the notify jobs to actually
+#      send email (same convention as pf-rates/pf-payroll). If these are not
+#      set, the notify steps no-op instead of failing the pipeline.
+#
+# Required GitHub Secrets:
+#   CLASP_CREDENTIALS   -- content of a clasp 3.x .clasprc.json (see step 1)
+#
+# For more details, see docs/ci.md
+#
+# ============================================================
+
+name: CI / Deploy Apps Script
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test:coverage
+
+  resolve-targets:
+    name: Resolve targets.json
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      aliases: ${{ steps.read.outputs.aliases }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: echo "aliases=$(jq -c '[.[].alias]' targets.json)" >> "$GITHUB_OUTPUT"
+
+  gate-with-approval:
+    name: Approval Gate
+    needs: resolve-targets
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - run: echo "Approved -- proceeding to deploy."
+
+  deploy:
+    name: Deploy (${{ matrix.alias }})
+    needs: [resolve-targets, gate-with-approval]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        alias: ${{ fromJson(needs.resolve-targets.outputs.aliases) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Restore clasp credentials
+        env:
+          CLASP_CREDENTIALS: ${{ secrets.CLASP_CREDENTIALS }}
+        run: echo "$CLASP_CREDENTIALS" > "${{ github.workspace }}/.clasprc.json"
+      - name: Push target
+        env:
+          clasp_config_auth: ${{ github.workspace }}/.clasprc.json
+        run: bash scripts/push-target.sh ${{ matrix.alias }}
+      - name: Remove clasp credentials
+        if: always()
+        run: rm -f "${{ github.workspace }}/.clasprc.json"
+
+  notify-failure:
+    name: Notify -- Failure
+    needs: [test, resolve-targets, gate-with-approval, deploy]
+    if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Email on failure
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: ${{ secrets.MAIL_FROM }}
+          to: ${{ secrets.MAIL_TO }}
+          subject: "[pf-sheets] Deploy pipeline failed"
+          body: "One or more jobs failed on main. See: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+  notify-success:
+    name: Notify -- Success
+    needs: deploy
+    if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Email on success
+        continue-on-error: true
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.MAIL_SERVER }}
+          server_port: ${{ secrets.MAIL_PORT }}
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          from: ${{ secrets.MAIL_FROM }}
+          to: ${{ secrets.MAIL_TO }}
+          subject: "[pf-sheets] Deploy pipeline succeeded"
+          body: "All targets pushed successfully. See: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

@@ -1,0 +1,6 @@
+# clasp scopes pushes to rootDir (./src), so most repo-root files (tests/,
+# docs/, package.json, Makefile, scripts/) are already out of scope by
+# construction. This file is a defensive extra layer for anything that ever
+# creeps into src/ by mistake.
+**/*.test.js
+**/.DS_Store
