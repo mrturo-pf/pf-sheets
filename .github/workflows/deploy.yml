@@ -131,12 +131,27 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           from: ${{ secrets.MAIL_FROM }}
           to: ${{ secrets.MAIL_TO }}
-          subject: "[pf-sheets] Deploy pipeline failed"
-          body: "One or more jobs failed on main. See: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          subject: "[FAILED] pf-sheets deploy pipeline — ${{ github.ref_name }}"
+          body: |
+            Deployment pipeline FAILED for pf-sheets.
+
+            Job results:
+            - Test & Lint: ${{ needs.test.result }}
+            - Resolve targets.json: ${{ needs.resolve-targets.result }}
+            - Approval Gate: ${{ needs.gate-with-approval.result }}
+            - Deploy (clasp push, per target): ${{ needs.deploy.result }}
+
+            Details:
+            - Branch: ${{ github.ref_name }}
+            - Commit: ${{ github.sha }}
+            - Author: ${{ github.actor }}
+
+            View run:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
   notify-success:
     name: Notify -- Success
-    needs: deploy
+    needs: [resolve-targets, deploy]
     if: success() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -150,5 +165,17 @@ jobs:
           password: ${{ secrets.MAIL_PASSWORD }}
           from: ${{ secrets.MAIL_FROM }}
           to: ${{ secrets.MAIL_TO }}
-          subject: "[pf-sheets] Deploy pipeline succeeded"
-          body: "All targets pushed successfully. See: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          subject: "[SUCCESS] pf-sheets deployed — ${{ github.ref_name }}"
+          body: |
+            SUCCESS: pf-sheets pushed to every Apps Script target via clasp.
+
+            Targets pushed: ${{ needs.resolve-targets.outputs.aliases }}
+
+            Deployment Info:
+            - Branch: ${{ github.ref_name }}
+            - Commit: ${{ github.sha }}
+            - Author: ${{ github.actor }}
+            - Approval: Manual (production environment gate)
+
+            View details:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
