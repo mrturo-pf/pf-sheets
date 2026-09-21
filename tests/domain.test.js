@@ -9,6 +9,9 @@ const {
   resolveCombinedCsvColumns,
   applySheetCodeAlias,
   buildValuesCsvRows,
+  createArrayRowAccessor,
+  findFirstRowIndexAtOrAfterDate,
+  findRateValue,
 } = require("../src/domain");
 
 const TZ = "America/Santiago";
@@ -409,5 +412,135 @@ describe("buildValuesCsvRows", () => {
 
     expect(plan.insertedCount).toBe(2);
     expect(plan.rows.map((row) => row[1])).toEqual(["IPC_CL", "IPC_CL"]);
+  });
+});
+
+// Fixture mirrors the real VALUES sheet invariant: sorted by date, then
+// code (see compareSheetRows / computeUpsertPlan) -- deliberately includes
+// gaps (no 2026-01-12 or 2026-01-14 rows) and a variable number of codes
+// per date, since that's the real shape findRateValue has to handle.
+const SORTED_FIXTURE_ROWS = [
+  [1, "EUR", "2026-01-10", 900, "2026-01-10T12:00:00Z"],
+  [2, "USD", "2026-01-10", 850, "2026-01-10T12:00:00Z"],
+  [3, "EUR", "2026-01-11", 905, "2026-01-11T12:00:00Z"],
+  [4, "USD", "2026-01-11", 855, "2026-01-11T12:00:00Z"],
+  [5, "CLF", "2026-01-13", 36000, "2026-01-13T12:00:00Z"],
+  [6, "EUR", "2026-01-13", 910, "2026-01-13T12:00:00Z"],
+  [7, "USD", "2026-01-13", 860, "2026-01-13T12:00:00Z"],
+  [8, "UTM", "2026-01-13", 65000, "2026-01-13T12:00:00Z"],
+  [9, "EUR", "2026-01-15", 915, "2026-01-15T12:00:00Z"],
+  [10, "USD", "2026-01-15", 865, "2026-01-15T12:00:00Z"],
+];
+
+describe("findFirstRowIndexAtOrAfterDate", () => {
+  const accessor = createArrayRowAccessor(SORTED_FIXTURE_ROWS);
+
+  it("returns index 0 when the target date is before every row", () => {
+    expect(findFirstRowIndexAtOrAfterDate(accessor, "2026-01-01", TZ)).toBe(0);
+  });
+
+  it("returns the start of a date's block when the target matches exactly", () => {
+    expect(findFirstRowIndexAtOrAfterDate(accessor, "2026-01-13", TZ)).toBe(4);
+  });
+
+  it("returns the next block's start when the target date falls in a gap", () => {
+    // 2026-01-12 has no rows -- lower bound lands on the first 2026-01-13 row.
+    expect(findFirstRowIndexAtOrAfterDate(accessor, "2026-01-12", TZ)).toBe(4);
+  });
+
+  it("returns rowCount() when the target date is after every row", () => {
+    expect(findFirstRowIndexAtOrAfterDate(accessor, "2026-02-01", TZ)).toBe(10);
+  });
+});
+
+describe("findRateValue", () => {
+  const accessor = createArrayRowAccessor(SORTED_FIXTURE_ROWS);
+
+  it("finds an exact match on the very first row", () => {
+    expect(findRateValue(accessor, "EUR", "2026-01-10", TZ)).toBe(900);
+  });
+
+  it("finds an exact match on the very last row", () => {
+    expect(findRateValue(accessor, "USD", "2026-01-15", TZ)).toBe(865);
+  });
+
+  it("finds the right code among several sharing the same date", () => {
+    expect(findRateValue(accessor, "UTM", "2026-01-13", TZ)).toBe(65000);
+    expect(findRateValue(accessor, "CLF", "2026-01-13", TZ)).toBe(36000);
+  });
+
+  it("applies the sheet code alias so callers can ask for UF and get CLF's value", () => {
+    expect(findRateValue(accessor, "UF", "2026-01-13", TZ)).toBe(36000);
+  });
+
+  it("is case-insensitive on the code", () => {
+    expect(findRateValue(accessor, "usd", "2026-01-10", TZ)).toBe(850);
+  });
+
+  it("accepts a real Date instance for the date argument, not just a string", () => {
+    const date = new Date(Date.UTC(2026, 0, 10, 15, 0, 0)); // noon in America/Santiago
+    expect(findRateValue(accessor, "EUR", date, TZ)).toBe(900);
+  });
+
+  it("returns null for a code that doesn't exist on an otherwise valid date", () => {
+    expect(findRateValue(accessor, "UTM", "2026-01-10", TZ)).toBeNull();
+  });
+
+  it("returns null for a date that falls in a gap between existing dates", () => {
+    expect(findRateValue(accessor, "USD", "2026-01-12", TZ)).toBeNull();
+  });
+
+  it("returns null for a date before the first row", () => {
+    expect(findRateValue(accessor, "USD", "2026-01-01", TZ)).toBeNull();
+  });
+
+  it("returns null for a date after the last row", () => {
+    expect(findRateValue(accessor, "USD", "2026-02-01", TZ)).toBeNull();
+  });
+
+  it("returns null when the accessor has zero rows", () => {
+    expect(findRateValue(createArrayRowAccessor([]), "USD", "2026-01-10", TZ)).toBeNull();
+  });
+
+  it("returns null for missing code or date arguments", () => {
+    expect(findRateValue(accessor, "", "2026-01-10", TZ)).toBeNull();
+    expect(findRateValue(accessor, "USD", "", TZ)).toBeNull();
+  });
+
+  it("returns null instead of NaN when the matched row's value isn't numeric", () => {
+    const dirtyRows = [[1, "USD", "2026-01-10", "N/A", "2026-01-10T12:00:00Z"]];
+    expect(findRateValue(createArrayRowAccessor(dirtyRows), "USD", "2026-01-10", TZ)).toBeNull();
+  });
+
+  it("stays fast on a ~30k-row sheet -- regression guard against reintroducing a linear scan", () => {
+    const codes = ["USD", "EUR", "CLF", "UTM", "IPC_CL"];
+    const start = new Date(Date.UTC(2010, 0, 1));
+    const dayCount = 6000;
+    const largeRows = [];
+    let id = 0;
+    for (let d = 0; d < dayCount; d++) {
+      const date = new Date(start.getTime() + d * 86400000).toISOString().slice(0, 10);
+      for (const code of codes) {
+        id++;
+        largeRows.push([id, code, date, 100 + d, date]);
+      }
+    }
+    const largeAccessor = createArrayRowAccessor(largeRows);
+
+    const firstDate = largeRows[0][2];
+    const lastDate = largeRows[largeRows.length - 1][2];
+    const midDate = largeRows[Math.floor(largeRows.length / 2)][2];
+
+    const startMs = Date.now();
+    expect(findRateValue(largeAccessor, "USD", firstDate, TZ)).not.toBeNull();
+    expect(findRateValue(largeAccessor, "EUR", lastDate, TZ)).not.toBeNull();
+    expect(findRateValue(largeAccessor, "UTM", midDate, TZ)).not.toBeNull();
+    expect(findRateValue(largeAccessor, "XYZ", midDate, TZ)).toBeNull();
+    const elapsedMs = Date.now() - startMs;
+
+    // A true O(log n) lookup over 30k rows should take low single-digit ms;
+    // 50ms leaves generous headroom for slow CI runners while still failing
+    // hard if this regresses back to an O(n) scan.
+    expect(elapsedMs).toBeLessThan(50);
   });
 });

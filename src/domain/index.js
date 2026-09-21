@@ -384,6 +384,102 @@ function buildValuesCsvRows(combinedCsvRows) {
   };
 }
 
+/**
+ * Minimal read interface `findRateValue` needs over the VALUES sheet's rows
+ * (id, code, date, value, last_modified_at), decoupled from how those rows
+ * are actually fetched. This is what lets `infrastructure/` implement it
+ * with targeted `getRange(row, col).getValue()` calls against the real
+ * Sheet -- never materializing all ~30k rows into memory just to answer
+ * one GET_CLP lookup -- while this file stays testable with a trivial
+ * array-backed fake.
+ * @typedef {Object} RowAccessor
+ * @property {function(): number} rowCount
+ * @property {function(number): Array<*>} getRow 0-based row index -> [id, code, date, value, last_modified_at]
+ */
+
+/**
+ * Wraps a plain array of VALUES-shaped rows as a RowAccessor. Reference
+ * implementation used by tests; the real `infrastructure/` accessor reads
+ * directly from the Sheet instead of holding every row in memory.
+ * @param {Array<Array<*>>} rows
+ * @returns {RowAccessor}
+ */
+function createArrayRowAccessor(rows) {
+  return {
+    rowCount: function () {
+      return rows.length;
+    },
+    getRow: function (index) {
+      return rows[index];
+    },
+  };
+}
+
+/**
+ * Binary "lower bound" search: the smallest 0-based index whose row's date
+ * key is >= targetDateKey, or `accessor.rowCount()` if every row's date is
+ * smaller. Assumes rows are already sorted ascending by date (the
+ * invariant `computeUpsertPlan` guarantees for the VALUES sheet -- see
+ * compareSheetRows) -- this is what turns a lookup into O(log n) instead
+ * of a full linear scan.
+ * @param {RowAccessor} accessor
+ * @param {string} targetDateKey "YYYY-MM-DD"
+ * @param {string} timeZone
+ * @returns {number}
+ */
+function findFirstRowIndexAtOrAfterDate(accessor, targetDateKey, timeZone) {
+  var low = 0;
+  var high = accessor.rowCount();
+  while (low < high) {
+    var mid = Math.floor((low + high) / 2);
+    var midDateKey = normalizeDateKey(accessor.getRow(mid)[2], timeZone);
+    if (midDateKey < targetDateKey) {
+      low = mid + 1;
+    } else {
+      high = mid;
+    }
+  }
+  return low;
+}
+
+/**
+ * Looks up a single VALUES-sheet value for (code, date) -- the core of
+ * GET_CLP. Finds the start of the (small, contiguous) block of rows
+ * sharing `date` via binary search, then scans forward only within that
+ * block for a matching code, instead of a full linear scan. `code` is run
+ * through `applySheetCodeAlias` first so callers can ask for "UF" even
+ * though the sheet stores it as "CLF" (same alias the sync already
+ * applies on write -- see applySheetCodeAlias).
+ * @param {RowAccessor} accessor
+ * @param {string} rawCode e.g. "USD", "uf"
+ * @param {Date|string} rawDate
+ * @param {string} timeZone e.g. "America/Santiago"
+ * @returns {number|null} the CLP value, or null if not found / inputs invalid
+ */
+function findRateValue(accessor, rawCode, rawDate, timeZone) {
+  var targetCode = applySheetCodeAlias(rawCode);
+  var targetDateKey = normalizeDateKey(rawDate, timeZone);
+  var rowCount = accessor.rowCount();
+
+  if (!rowCount || !targetCode || !targetDateKey) {
+    return null;
+  }
+
+  var index = findFirstRowIndexAtOrAfterDate(accessor, targetDateKey, timeZone);
+  while (index < rowCount) {
+    var row = accessor.getRow(index);
+    if (normalizeDateKey(row[2], timeZone) !== targetDateKey) {
+      break;
+    }
+    if (String(row[1]).trim().toUpperCase() === targetCode) {
+      var value = parseFloat(row[3]);
+      return isNaN(value) ? null : value;
+    }
+    index++;
+  }
+  return null;
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normalizeDateKey: normalizeDateKey,
@@ -396,5 +492,8 @@ if (typeof module !== "undefined") {
     resolveCombinedCsvColumns: resolveCombinedCsvColumns,
     applySheetCodeAlias: applySheetCodeAlias,
     buildValuesCsvRows: buildValuesCsvRows,
+    createArrayRowAccessor: createArrayRowAccessor,
+    findFirstRowIndexAtOrAfterDate: findFirstRowIndexAtOrAfterDate,
+    findRateValue: findRateValue,
   };
 }
