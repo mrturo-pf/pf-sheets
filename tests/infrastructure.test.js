@@ -6,6 +6,8 @@ const {
   writeRows,
   getActiveSpreadsheet,
   showAlert,
+  getGetClpApiKey,
+  createSheetRowAccessor,
 } = require("../src/infrastructure");
 
 describe("getConfig", () => {
@@ -145,5 +147,58 @@ describe("getActiveSpreadsheet / showAlert", () => {
     showAlert(fakeSpreadsheetApp, "something went wrong");
 
     expect(alertCalls).toEqual(["something went wrong"]);
+  });
+});
+
+describe("getGetClpApiKey", () => {
+  it("reads GET_CLP_API_KEY from the injected PropertiesService", () => {
+    const fakePropertiesService = {
+      getScriptProperties: () => ({
+        getProperty: (key) => (key === "GET_CLP_API_KEY" ? "shh-its-a-secret" : undefined),
+      }),
+    };
+
+    expect(getGetClpApiKey(fakePropertiesService)).toBe("shh-its-a-secret");
+  });
+
+  it("returns whatever falsy value PropertiesService gives back when unset", () => {
+    const fakePropertiesService = {
+      getScriptProperties: () => ({ getProperty: () => null }),
+    };
+
+    expect(getGetClpApiKey(fakePropertiesService)).toBeNull();
+  });
+});
+
+describe("createSheetRowAccessor", () => {
+  it("reports zero rows when the sheet only has a header row", () => {
+    const fakeSheet = { getLastRow: () => 1 };
+    expect(createSheetRowAccessor(fakeSheet).rowCount()).toBe(0);
+  });
+
+  it("reports zero rows for a completely empty sheet", () => {
+    const fakeSheet = { getLastRow: () => 0 };
+    expect(createSheetRowAccessor(fakeSheet).rowCount()).toBe(0);
+  });
+
+  it("computes rowCount as lastRow - 1 (excluding the header)", () => {
+    const fakeSheet = { getLastRow: () => 4 };
+    expect(createSheetRowAccessor(fakeSheet).rowCount()).toBe(3);
+  });
+
+  it("reads exactly one 5-column row at the +2 offset per getRow call, not the whole sheet", () => {
+    const getRangeCalls = [];
+    const fakeSheet = {
+      getLastRow: () => 4,
+      getRange: (...args) => {
+        getRangeCalls.push(args);
+        return { getValues: () => [[3, "USD", "2026-01-16", 860, "ts"]] };
+      },
+    };
+
+    const row = createSheetRowAccessor(fakeSheet).getRow(2);
+
+    expect(getRangeCalls).toEqual([[4, 1, 1, 5]]);
+    expect(row).toEqual([3, "USD", "2026-01-16", 860, "ts"]);
   });
 });

@@ -111,6 +111,41 @@ function showAlert(spreadsheetApp, message) {
   spreadsheetApp.getUi().alert(message);
 }
 
+/**
+ * Reads the shared secret GET_CLP's Web App endpoint compares the
+ * caller-supplied `key` query param against. Kept separate from
+ * `getConfig` (which covers the unrelated pf-rates sync config) --
+ * this key protects a different, unrelated capability.
+ * @param {GoogleAppsScript.Properties.PropertiesService} propertiesService
+ * @returns {string|null}
+ */
+function getGetClpApiKey(propertiesService) {
+  return propertiesService.getScriptProperties().getProperty("GET_CLP_API_KEY");
+}
+
+/**
+ * Builds a RowAccessor (see domain/index.js's findRateValue) backed by
+ * targeted, per-row range reads against a real Sheet, instead of loading
+ * every row into memory up front -- this is what keeps findRateValue's
+ * binary search genuinely cheap in practice, not just in the pure domain
+ * logic. Mirrors readExistingRows' column layout (id, code, date, value,
+ * last_modified_at) and 1-based row offset (+2 for the header row).
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @returns {{rowCount: function(): number, getRow: function(number): Array<*>}}
+ */
+function createSheetRowAccessor(sheet) {
+  var lastRow = sheet.getLastRow();
+  var rowCount = lastRow > 1 ? lastRow - 1 : 0;
+  return {
+    rowCount: function () {
+      return rowCount;
+    },
+    getRow: function (index) {
+      return sheet.getRange(index + 2, 1, 1, 5).getValues()[0];
+    },
+  };
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     getConfig: getConfig,
@@ -120,5 +155,7 @@ if (typeof module !== "undefined") {
     writeRows: writeRows,
     getActiveSpreadsheet: getActiveSpreadsheet,
     showAlert: showAlert,
+    getGetClpApiKey: getGetClpApiKey,
+    createSheetRowAccessor: createSheetRowAccessor,
   };
 }

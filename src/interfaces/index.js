@@ -3,12 +3,13 @@
  * and the custom menu (`onOpen`). Kept thin — orchestration only,
  * delegating computation to `domain/` and I/O to `infrastructure/`.
  *
- * This is the ONLY file allowed to reference the bare Apps Script globals
- * (SpreadsheetApp, DriveApp, UrlFetchApp, PropertiesService, Utilities)
- * directly — every other layer receives them as explicit parameters. Not
- * unit-tested here (exercising it would mean faking all five globals at
- * once, for very little signal); validated instead by running the pushed
- * macro for real, end-to-end, against the live Sheet. `domain/` and
+ * This and `interfaces/webapp.js` are the only files allowed to reference
+ * the bare Apps Script globals (SpreadsheetApp, DriveApp, UrlFetchApp,
+ * PropertiesService, Utilities, ContentService) directly — every other
+ * layer receives them as explicit parameters. Not unit-tested here
+ * (exercising it would mean faking all five globals at once, for very
+ * little signal); validated instead by running the pushed macro for
+ * real, end-to-end, against the live Sheet. `domain/` and
  * `infrastructure/` carry the real test coverage.
  *
  * Calls domain/infrastructure functions by bare name (no `require`) —

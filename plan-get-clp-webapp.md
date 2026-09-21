@@ -137,13 +137,27 @@ la custom function que llama a `UrlFetchApp.fetch`):
 - `URL Fetch` confirmado sin restricciones dentro de una custom function — es el
   mecanismo que hace viable el Web App.
 
-### Fase 2 — `interfaces/webapp.js` (archivo nuevo, separado de `index.js`)
-- `doGet(e)`: valida `key` contra `PropertiesService`, valida `date`/`code`, usa
-  `SpreadsheetApp.openById(ID)` (nunca `getActiveSpreadsheet()`, sigue rota en contexto
-  de Web App), llama a `findRateValue` (Fase 1) con un `RowAccessor` respaldado por
-  lecturas de rango reales, responde texto plano.
-- Separado de `index.js` por SRP ("macro manual" vs. "API pública HTTP" son razones de
-  cambio distintas), no por límite de líneas.
+### Fase 2 — `interfaces/webapp.js` (completada)
+- `doGet(e)`: valida `key` contra `GET_CLP_API_KEY` (nueva `getGetClpApiKey` en
+  `infrastructure/`), valida `date`/`code`, usa `SpreadsheetApp.openById(ID)` (nunca
+  `getActiveSpreadsheet()`), llama a `findRateValue` (Fase 1) con un `RowAccessor` real
+  respaldado por lecturas de rango puntuales (nueva `createSheetRowAccessor` en
+  `infrastructure/`), responde texto plano vía `ContentService`.
+- Strings de respuesta en inglés (`"Unauthorized"`, `"Missing parameters"`,
+  `"Not found"`), no en español como se había escrito inicialmente en este plan —
+  corregido para respetar la política de idioma de `pf-sheets/AGENTS.md` (inglés sin
+  excepción), consistente con el resto del código (`interfaces/index.js` ya usa
+  mensajes en inglés).
+- Separado de `index.js` por SRP, como estaba planeado. El comentario de cabecera de
+  `index.js` se actualizó para dejar de decir que es "el único" archivo con acceso a
+  globals de Apps Script — ahora son dos.
+- No unit-testeado directamente (mismo criterio ya establecido para `index.js` en
+  `jest.config.js`: `src/interfaces/**` queda fuera de `collectCoverageFrom` a
+  propósito) — smoke test mínimo en `tests/interfaces.test.js` (verifica que `doGet`
+  se exporta como función), validación real end-to-end pendiente contra el deployment
+  ya creado (Fase 0).
+- 73/73 tests en el repo, 100% statements/lines/functions y branches por encima del
+  90% exigido en `domain/` e `infrastructure/`.
 
 ### Fase 3 — Cacheo (complementario, barato)
 - `CacheService.getScriptCache()` por clave `code|date` (TTL 6h, el máximo permitido)
@@ -177,12 +191,17 @@ la custom function que llama a `UrlFetchApp.fetch`):
 ## Verificación final
 
 Criterios de aceptación:
-1. `curl "[WEB_APP_URL]?date=2026-09-15&code=USD&key=..."` → valor numérico correcto.
+1. `curl "[WEB_APP_URL]?date=2026-09-15&code=USD&key=.."` → valor numérico correcto.
 2. `=GET_CLP(DATE(2026,9,15), "USD")` en una celda de una hoja consumidora → mismo
    valor, numérico.
-3. Combinación inexistente (fecha futura o código inválido) → `"No encontrado"` limpio,
+3. Combinación inexistente (fecha futura o código inválido) → `"Not found"` limpio,
    sin romper la hoja.
-4. Falta algún parámetro → `"Faltan parámetros"`.
+4. Falta algún parámetro → `"Missing parameters"`.
+5. `key` incorrecta o ausente → `"Unauthorized"`.
+
+Nota de idioma: los strings de respuesta de `doGet` van en inglés, no en español —
+`pf-sheets/AGENTS.md` fija política de idioma inglés para todo el código, sin
+excepción aplicable acá (a diferencia del borrador inicial de este plan).
 
 Más: benchmark de latencia contra las ~30.000 filas reales antes de dar por cerrado
 (mismo enfoque que el benchmark del fix de OOM de `updateExchangeRates`, ya cubierto en
