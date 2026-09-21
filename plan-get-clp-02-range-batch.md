@@ -1,5 +1,11 @@
 # Plan: `GET_CLP_RANGE` — lookup por lote para reducir llamadas HTTP concurrentes
 
+> **Estado: PENDIENTE.** Diagnóstico y diseño documentados más abajo; implementación
+> no iniciada todavía. Es la continuación de
+> [`plan-get-clp-01-webapp.md`](plan-get-clp-01-webapp.md) (ese plan ya está
+> completo y en producción) — este documento cubre el problema de escala detectado
+> después del lanzamiento.
+
 Plan de acción para la próxima sesión — **no implementar todavía**, solo dejar
 registrado el diagnóstico y el rumbo propuesto para no perder contexto.
 
@@ -87,7 +93,7 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
    (a determinar según límites reales de tamaño de payload de Apps Script).
 6. **¿Se mantiene `GET_CLP` de celda única?** Sí — no todos los consumidores
    necesitan lookup masivo (ver Fase 4 del plan original,
-   `plan-get-clp-webapp.md`: el criterio ya establecido es no imponerle a un
+   `plan-get-clp-01-webapp.md`: el criterio ya establecido es no imponerle a un
    consumidor más máquina de la que necesita). `GET_CLP_RANGE` es un complemento,
    no un reemplazo.
 7. **Testing**: la función de dominio que resuelve el lote debe vivir en `domain/`

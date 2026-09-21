@@ -122,7 +122,7 @@ without needing access to the spreadsheet itself. Served by a Web App deployment
 this same `exchange-rates` project (`src/interfaces/webapp.js`'s `doGet`) -- see
 [`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
 for the deployment ID/URL and
-[`../plan-get-clp-webapp.md`](../plan-get-clp-webapp.md) for the full design rationale
+[`../plan-get-clp-01-webapp.md`](../plan-get-clp-01-webapp.md) for the full design rationale
 (including why this is a Web App and not an Apps Script Library -- custom functions
 cannot call `SpreadsheetApp.openById()`/`openByUrl()`, full stop, regardless of who
 owns what).
@@ -133,7 +133,7 @@ one `doGet` entry point, there's no routing)
 **Authentication:** Required -- `key` query param, checked against the `GET_CLP_API_KEY`
 Script Property. There is no other access control: the deployment itself is reachable
 anonymously (`ANYONE_ANONYMOUS` in `src/appsscript.json`'s manifest -- see
-`plan-get-clp-webapp.md` Fase 0 for why that's required, not just permissive), so this
+`plan-get-clp-01-webapp.md` Fase 0 for why that's required, not just permissive), so this
 key is the *only* real gate.
 
 **Query params:**
@@ -255,7 +255,7 @@ documents needing the *same* full sync behavior, not this.
    }
 
    // Custom functions get killed by the platform at 30s, full stop (see
-   // plan-get-clp-webapp.md's Fase 1.5) -- that hard kill produces an
+   // plan-get-clp-01-webapp.md's Fase 1.5) -- that hard kill produces an
    // ugly, non-catchable-by-IFERROR "Exceeded maximum execution time"
    // error. Budgeting retries to this ceiling means GET_CLP gives up on
    // ITS OWN terms (a clean, throwable, IFERROR-catchable error) well
@@ -343,7 +343,7 @@ correctly falls through to `NA()` -- this is expected, not a bug to chase.
 ### Why `UrlFetchApp`, not a Library call
 
 `URL Fetch` is one of the few services explicitly allowed, unrestricted, inside a
-custom function's sandbox -- see plan-get-clp-webapp.md's Fase 1.5. This is precisely
+custom function's sandbox -- see plan-get-clp-01-webapp.md's Fase 1.5. This is precisely
 what makes the Web App design work at all: `doGet` executes as a fully separate,
 unrestricted execution triggered by this HTTP call, not as part of this custom
 function's own restricted call stack.

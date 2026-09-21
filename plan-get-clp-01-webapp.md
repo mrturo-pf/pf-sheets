@@ -1,5 +1,13 @@
 # Plan: `GET_CLP(fecha, codigo)` — Web App + custom function
 
+> **Estado:  COMPLETADO.** Las 6 fases de este plan están cerradas y `GET_CLP` está
+> en producción (Web App + custom function), instalado en `(05) Payroll` y
+> `(12) MedicalRefund`. El endurecimiento adicional post-lanzamiento (reintentos ante
+> fallas de infraestructura de Google, control de presupuesto de tiempo) se hizo como
+> continuación directa de este plan y ya también está en producción. El siguiente
+> problema detectado (fricción bajo ráfagas grandes de celdas, ~108 y creciendo) se
+> spinneó a un plan aparte — ver [`plan-get-clp-02-range-batch.md`](plan-get-clp-02-range-batch.md).
+
 Análisis de factibilidad + plan de acción para exponer los datos de la pestaña `VALUES`
 como una función custom reutilizable desde otros libros de Google Sheets, para no
 perder el contexto entre sesiones.
@@ -228,7 +236,7 @@ la custom function que llama a `UrlFetchApp.fetch`):
   unidad lógica).
 - `docs/getting-started.md` y `docs/ci.md`: actualizados incrementalmente en las Fases
   0 y 5 respectivamente, no había nada pendiente adicional acá.
-- Revisión de consistencia de punta a punta de este mismo documento (`plan-get-clp-webapp.md`)
+- Revisión de consistencia de punta a punta de este mismo documento (`plan-get-clp-01-webapp.md`)
   al cerrar la Fase 6 — sin contradicciones remanentes entre fases (el giro Library →
   Web App, la corrección de idioma, y la corrección de multi-target quedaron
   reflejados de forma consistente en todas las secciones que los mencionan).

@@ -184,7 +184,7 @@ update what a live Web App URL serves — a Web App deployment freezes a specifi
 version at the moment it's deployed (see
 [`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
 for how that deployment was first created, and
-[`../plan-get-clp-webapp.md`](../plan-get-clp-webapp.md) for the full design). So for any
+[`../plan-get-clp-01-webapp.md`](../plan-get-clp-01-webapp.md) for the full design). So for any
 target that has one, `scripts/push-target.sh` runs one extra step after `clasp push`:
 
 ```bash

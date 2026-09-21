@@ -17,7 +17,7 @@ describe("interfaces (pf-sheets)", () => {
 // Same rationale as above, applied to the Web App entry point: doGet
 // touches SpreadsheetApp/PropertiesService/ContentService directly, so
 // it's validated end-to-end against the real deployment (see
-// plan-get-clp-webapp.md "Verificación final"), not with faked globals
+// plan-get-clp-01-webapp.md "Verificación final"), not with faked globals
 // here.
 describe("interfaces/webapp (pf-sheets)", () => {
   it("exposes doGet as a function", () => {

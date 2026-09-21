@@ -3,13 +3,13 @@
  * `interfaces/index.js`'s bound macro. Split into its own file by SRP:
  * "macro triggered manually from a menu" and "public HTTP API" are
  * different reasons to change, not just a way to dodge a line-count
- * limit (see AGENTS.md / plan-get-clp-webapp.md Fase 2).
+ * limit (see AGENTS.md / plan-get-clp-01-webapp.md Fase 2).
  *
  * A `doGet` invocation runs as a genuinely separate execution from
  * whatever custom function called it via `UrlFetchApp.fetch(...)` -- that
  * separation is *why* this design works at all: a custom function's own
  * sandbox forbids `SpreadsheetApp.openById()`/`openByUrl()` outright (see
- * plan-get-clp-webapp.md, Fase 1.5), but this file isn't running inside
+ * plan-get-clp-01-webapp.md, Fase 1.5), but this file isn't running inside
  * that sandbox, so it can use `openById()` freely.
  *
  * Like `interfaces/index.js`, this is one of the few files allowed to

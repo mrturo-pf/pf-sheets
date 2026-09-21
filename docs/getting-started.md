@@ -89,7 +89,7 @@ it's recorded here purely so it doesn't only live in one person's browser histor
 | Deployment ID | `AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk` |
 | Web app URL | `https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec` |
 | Execute as | Me (`USER_DEPLOYING` in the manifest) |
-| Who has access | Anyone, including anonymous requests (`ANYONE_ANONYMOUS` in the manifest) -- access control is enforced by the `key` query param, not by this setting; see "Problemas encontrados" #3 in `../plan-get-clp-webapp.md` |
+| Who has access | Anyone, including anonymous requests (`ANYONE_ANONYMOUS` in the manifest) -- access control is enforced by the `key` query param, not by this setting; see "Problemas encontrados" #3 in `../plan-get-clp-01-webapp.md` |
 
 Neither value is a secret -- an Apps Script deployment ID/URL grants nothing by
 itself, since `doGet` (once implemented) still requires `GET_CLP_API_KEY`. The
