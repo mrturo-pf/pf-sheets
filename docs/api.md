@@ -127,6 +127,42 @@ for the deployment ID/URL and
 cannot call `SpreadsheetApp.openById()`/`openByUrl()`, full stop, regardless of who
 owns what).
 
+**GET /exec** (the Web App's fixed endpoint path -- Apps Script Web Apps have exactly
+one `doGet` entry point, there's no routing)
+
+**Authentication:** Required -- `key` query param, checked against the `GET_CLP_API_KEY`
+Script Property. There is no other access control: the deployment itself is reachable
+anonymously (`ANYONE_ANONYMOUS` in `src/appsscript.json`'s manifest -- see
+`plan-get-clp-webapp.md` Fase 0 for why that's required, not just permissive), so this
+key is the *only* real gate.
+
+**Query params:**
+
+| Param | Required | Format | Meaning |
+| --- | --- | --- | --- |
+| `key` | Yes | string | Must equal `GET_CLP_API_KEY`. |
+| `date` | Yes | `YYYY-MM-DD` (or anything whose first 10 characters are that) | The date to look up, in the **central spreadsheet's** time zone (`America/Santiago`). |
+| `code` | Yes | string, case-insensitive | e.g. `USD`, `EUR`, `UF` (resolved to `CLF`, see "Code aliases" above), `UTM`, `IPC_CL`. |
+
+**Response:** always `200`, `Content-Type: text/plain`. Body is one of:
+
+| Body | Meaning |
+| --- | --- |
+| a bare number, e.g. `957.53` | Successful lookup. |
+| `Unauthorized` | `key` missing or didn't match `GET_CLP_API_KEY`. |
+| `Missing parameters` | `date` or `code` missing. |
+| `Not found` | No row for that exact `(code, date)` -- or, less commonly, the `VALUES` tab itself is missing (logged server-side via `console.error`, not distinguishable from a normal miss in the response body -- see `src/interfaces/webapp.js`). |
+
+There are no other status codes or JSON error bodies by design -- see "Install" below
+for how the client snippet turns this plain-text contract into either a number or a
+clean message in the calling cell.
+
+**Example:**
+```bash
+curl "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec?date=2026-09-15&code=USD&key=<GET_CLP_API_KEY>"
+# => 957.53
+```
+
 **This is not code this repo pushes anywhere.** Unlike `updateExchangeRates`/`onOpen`
 (pushed via `clasp` to every target in `targets.json`), the snippet below is meant to be
 pasted manually, once, into each *consuming* Apps Script project -- those are separate

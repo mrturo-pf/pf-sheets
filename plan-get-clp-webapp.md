@@ -217,11 +217,21 @@ la custom function que llama a `UrlFetchApp.fetch`):
 - 80/80 tests (3 nuevos para `resolveWebAppDeploymentId`), lint limpio, sintaxis de
   shell verificada con `bash -n`.
 
-### Fase 6 — Docs
-- `pf-sheets/docs/api.md` nuevo (mismo estilo que `pf-rates/docs/api.md`): contrato del
-  endpoint, semántica de errores, cómo instalar `GET_CLP`.
-- Actualizar `AGENTS.md` — la línea "no versioned clasp deploy — YAGNI" queda obsoleta
-  apenas esto se implemente.
+### Fase 6 — Docs (completada)
+- `pf-sheets/docs/api.md`: nueva sección "`GET_CLP(date, code)` (Web App custom
+  function)" con contrato formal del endpoint (query params, tabla de respuestas
+  posibles, ejemplo con `curl`), estilo espejado de `pf-rates/docs/api.md`
+  (**Método Path** / **Authentication** / **Query params** / **Response** /
+  **Errors**), más el runbook de instalación completo (Fase 4).
+- `AGENTS.md`: ya actualizado en la Fase 5 (línea "no versioned clasp deploy — YAGNI"
+  corregida ahí mismo, no separado, porque el cambio de CI y la doc son la misma
+  unidad lógica).
+- `docs/getting-started.md` y `docs/ci.md`: actualizados incrementalmente en las Fases
+  0 y 5 respectivamente, no había nada pendiente adicional acá.
+- Revisión de consistencia de punta a punta de este mismo documento (`plan-get-clp-webapp.md`)
+  al cerrar la Fase 6 — sin contradicciones remanentes entre fases (el giro Library →
+  Web App, la corrección de idioma, y la corrección de multi-target quedaron
+  reflejados de forma consistente en todas las secciones que los mencionan).
 
 ## Verificación final
 
