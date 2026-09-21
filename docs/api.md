@@ -254,6 +254,14 @@ documents needing the *same* full sync behavior, not this.
      throw new Error("Unexpected response");
    }
 
+   // Custom functions get killed by the platform at 30s, full stop (see
+   // plan-get-clp-webapp.md's Fase 1.5) -- that hard kill produces an
+   // ugly, non-catchable-by-IFERROR "Exceeded maximum execution time"
+   // error. Budgeting retries to this ceiling means GET_CLP gives up on
+   // ITS OWN terms (a clean, throwable, IFERROR-catchable error) well
+   // before Google's platform forcibly kills the whole execution.
+   var GET_CLP_MAX_RETRY_BUDGET_MILLIS_ = 25000;
+
    /**
     * Retries a GET_CLP Web App call up to 3 times with a short backoff,
     * because a burst of many simultaneous GET_CLP cells recalculating at
@@ -261,19 +269,30 @@ documents needing the *same* full sync behavior, not this.
     * a generic Drive-style HTML error page even though doGet itself
     * completed fine server-side -- confirmed via the Executions log, not
     * guessed). A single flaky hop shouldn't surface as a broken formula.
+    *
+    * Time-budget aware on purpose: under a big enough burst, individual
+    * attempts themselves can already run several seconds long (observed
+    * directly in the Executions log). Blindly retrying 3 times on top of
+    * that risks tripping the platform's own 30s custom-function ceiling,
+    * which fails far worse (see the constant above) than just giving up
+    * a bit early with a clean thrown error.
     * @param {string} url
     * @return {string} the raw response body from the last attempt
     */
    function fetchGetClpResponseWithRetries_(url) {
      var maxAttempts = 3;
+     var startedAt = Date.now();
      var lastText = "";
      for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+       if (attempt > 1 && Date.now() - startedAt > GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
+         break;
+       }
        var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
        lastText = response.getContentText();
        if (isRecognizedGetClpResponse_(lastText)) {
          return lastText;
        }
-       if (attempt < maxAttempts) {
+       if (attempt < maxAttempts && Date.now() - startedAt < GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
          Utilities.sleep(300 * attempt); // 300ms, then 600ms
        }
      }
