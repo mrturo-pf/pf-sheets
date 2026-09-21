@@ -5,6 +5,12 @@
 > [`plan-get-clp-01-webapp.md`](plan-get-clp-01-webapp.md) (ese plan ya está
 > completo y en producción) — este documento cubre el problema de escala detectado
 > después del lanzamiento.
+>
+> **`GET_CLP` NO se elimina ni se deprecia con este plan.** `GET_CLP_RANGE` es una
+> fórmula nueva y adicional, pensada solo para el caso de muchas celdas recalculando
+> juntas (como "(05) Payroll"). Ambas conviven indefinidamente: cualquier hoja/celda
+> puede seguir usando `GET_CLP` para lookups individuales, incluso después de que
+> `GET_CLP_RANGE` exista.
 
 Plan de acción para la próxima sesión — **no implementar todavía**, solo dejar
 registrado el diagnóstico y el rumbo propuesto para no perder contexto.
@@ -126,6 +132,10 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
 4. Implementar `doPost` en `interfaces/webapp.js`.
 5. Implementar `GET_CLP_RANGE` en el snippet cliente (`docs/api.md` + push a
    Payroll/MedicalRefund vía `clasp`, mismo procedimiento pull-then-push ya usado).
-6. Migrar manualmente la hoja de Payroll de `GET_CLP` por celda a `GET_CLP_RANGE`.
+6. Migrar la hoja de Payroll de `GET_CLP` por celda a `GET_CLP_RANGE` **solo en las
+   dos columnas afectadas por la ráfaga** (el caso que motiva este plan) — esto NO
+   es deprecar `GET_CLP`: sigue disponible y soportado para cualquier otra celda,
+   hoja o consumidor (incluida la propia Payroll, si en el futuro necesita un
+   lookup suelto en otro lado del libro).
 7. Validar en producción con el volumen real (108 celdas) que ya no aparece
    `"Unexpected response"` ni demoras de 30+ segundos.
