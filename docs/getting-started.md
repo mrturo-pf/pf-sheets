@@ -61,6 +61,7 @@ and set:
 | --- | --- |
 | `PF_RATES_API_KEY` | the `X-API-Key` used to call `pf-rates`'s export endpoint |
 | `EXPORT_DRIVE_FILE_ID` | the Google Drive file ID of the exported **combined** CSV (`financial-data.csv`, from `POST /exports/financial-data`) |
+| `GET_CLP_API_KEY` | shared secret required as the `key` query param on the `GET_CLP` Web App endpoint (see "GET_CLP Web App deployment" below and [`api.md`](api.md)) |
 
 These replace the values that were previously hardcoded in source. See
 [`api.md`](api.md) for how the code reads them.
@@ -73,6 +74,33 @@ in `src/infrastructure/`, both start at row 2), so relabeling a header --
 e.g. showing "Last Modified" instead of "last_modified_at" -- is safe at
 any time, with no code change and no redeploy. Only the **column order**
 matters.
+
+## GET_CLP Web App deployment (once, per Apps Script project)
+
+`GET_CLP` (see [`api.md`](api.md)) is served by a Web App deployment of the same
+`exchange-rates` Apps Script project -- not a separate project. Unlike
+`scriptId` (versioned in [`clasp-targets/exchange-rates.clasp.json`](../clasp-targets/exchange-rates.clasp.json)
+and consumed directly by `clasp`), the deployment ID below isn't read by any
+tooling yet (that lands in a later phase, alongside `clasp deploy -i <id>` in CI) --
+it's recorded here purely so it doesn't only live in one person's browser history.
+
+| | |
+| --- | --- |
+| Deployment ID | `AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk` |
+| Web app URL | `https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec` |
+| Execute as | Me (`USER_DEPLOYING` in the manifest) |
+| Who has access | Anyone, including anonymous requests (`ANYONE_ANONYMOUS` in the manifest) -- access control is enforced by the `key` query param, not by this setting; see "Problemas encontrados" #3 in `../plan-get-clp-webapp.md` |
+
+Neither value is a secret -- an Apps Script deployment ID/URL grants nothing by
+itself, since `doGet` (once implemented) still requires `GET_CLP_API_KEY`. The
+real secret is that Script Property.
+
+This deployment currently serves no code (`doGet` doesn't exist in `src/`
+yet) -- hitting the URL above returns Google's generic "Script function not
+found: doGet" error until that lands. Redeploying after future code changes
+reuses this same ID via `clasp deploy -i <id>` (never `clasp deploy` without
+`-i`, which would create a brand new, separate deployment/URL instead of
+updating this one).
 
 ## Run tests
 
