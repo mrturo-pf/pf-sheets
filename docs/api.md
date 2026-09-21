@@ -199,6 +199,12 @@ documents needing the *same* full sync behavior, not this.
     * @throws {Error} "Not found" when there's no data for that (code, date)
     *   yet -- thrown, not returned, specifically so
     *   IFERROR(GET_CLP(...), ...) can catch just this one recoverable case.
+    *   Also throws "Unexpected response" if a burst of concurrent GET_CLP
+    *   calls trips Google's own Web App infrastructure (see the retry
+    *   helper below) three times in a row -- rare, but confirmed to happen
+    *   via the Executions log: doGet completed fine server-side every time,
+    *   yet the caller still got back Google's own generic error HTML
+    *   instead of doGet's real response.
     * @customfunction
     */
    function GET_CLP(date, code) {
@@ -219,25 +225,70 @@ documents needing the *same* full sync behavior, not this.
        "&code=" + encodeURIComponent(code) +
        "&key=" + encodeURIComponent(apiKey || "");
 
-     var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-     var text = response.getContentText();
+     var text = fetchGetClpResponseWithRetries_(url);
      var value = parseFloat(text);
 
      if (!isNaN(value)) {
        return value;
      }
-
      if (text === "Not found") {
        // The ONE case worth recovering from at the formula level -- thrown
-       // (not returned as a string) so IFERROR(GET_CLP(...), ...) below
-       // can catch it. "Unauthorized"/"Missing parameters" fall through to
-       // `return text` instead: those are real misconfigurations, not
-       // "no data yet", and must stay visibly loud in the cell rather than
-       // being silently masked by a GOOGLEFINANCE fallback that could show
-       // a plausible-but-wrong number over a broken API key.
+       // (not returned as a string) so an outer IFERROR(GET_CLP(...), ...)
+       // can catch it and fall back to GOOGLEFINANCE. "Unauthorized"/
+       // "Missing parameters" return as plain text instead: those are real
+       // misconfigurations, not "no data yet".
        throw new Error("Not found");
      }
-     return text;
+     if (text === "Unauthorized" || text === "Missing parameters") {
+       return text;
+     }
+     // Neither a number nor one of doGet's own fixed strings, even after
+     // retries -- almost certainly Google's Web App redirect infrastructure
+     // itself glitching under a burst of concurrent GET_CLP calls (observed
+     // directly: many simultaneous doGet executions in the Executions log,
+     // every one "Completed" server-side, yet the caller still got back an
+     // HTML "Sorry, unable to open the file" page instead of doGet's real
+     // response -- a known Apps Script Web App flakiness pattern, not a bug
+     // in doGet). Thrown as a real error so it's catchable the same way as
+     // "Not found", instead of dumping raw HTML into the cell.
+     throw new Error("Unexpected response");
+   }
+
+   /**
+    * Retries a GET_CLP Web App call up to 3 times with a short backoff,
+    * because a burst of many simultaneous GET_CLP cells recalculating at
+    * once can trip Google's own Web App redirect infrastructure (returns
+    * a generic Drive-style HTML error page even though doGet itself
+    * completed fine server-side -- confirmed via the Executions log, not
+    * guessed). A single flaky hop shouldn't surface as a broken formula.
+    * @param {string} url
+    * @return {string} the raw response body from the last attempt
+    */
+   function fetchGetClpResponseWithRetries_(url) {
+     var maxAttempts = 3;
+     var lastText = "";
+     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+       var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+       lastText = response.getContentText();
+       if (isRecognizedGetClpResponse_(lastText)) {
+         return lastText;
+       }
+       if (attempt < maxAttempts) {
+         Utilities.sleep(300 * attempt); // 300ms, then 600ms
+       }
+     }
+     return lastText;
+   }
+
+   /**
+    * @param {string} text
+    * @return {boolean}
+    */
+   function isRecognizedGetClpResponse_(text) {
+     if (text === "Unauthorized" || text === "Missing parameters" || text === "Not found") {
+       return true;
+     }
+     return !isNaN(parseFloat(text));
    }
    ```
 
