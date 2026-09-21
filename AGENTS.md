@@ -116,7 +116,11 @@ Quick reference:
 
 - **Trigger:** push to `main` (after manual approval via the `production` GitHub
   environment).
-- **Deploy:** `clasp push` only (no versioned `clasp deploy` for now — YAGNI).
+- **Deploy:** `clasp push` for every target, plus `clasp deploy -i <id>` for any
+  target that has a `webAppDeploymentId` configured in `targets.json` (today: only
+  `exchange-rates`, to serve `GET_CLP` -- see `docs/getting-started.md`). Targets with
+  no Web App skip that step entirely; `clasp push` alone was sufficient before
+  `GET_CLP` existed and still is for the sync macro itself.
 - **Auth secret:** `CLASP_CREDENTIALS` (a `.clasprc.json` generated once via
   `clasp login --creds`, never regenerated per push).
 

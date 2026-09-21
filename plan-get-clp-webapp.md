@@ -196,12 +196,26 @@ la custom function que llama a `UrlFetchApp.fetch`):
   (es la hoja consumidora, no la central), y usar SU propio timezone reconstruye
   correctamente "el día calendario que el usuario tipeó en la celda".
 
-### Fase 5 — CI/CD (scope nuevo real)
-- Hoy el pipeline solo hace `clasp push` (`AGENTS.md`: "no versioned clasp deploy for
-  now — YAGNI"). Exponer un Web App requiere `clasp deploy -i <deploymentId>` después
-  del push para que la URL pública sirva el código nuevo.
-- Pasa por el mismo gate de aprobación manual ya existente — con más razón, al ampliar
-  la superficie pública del sistema.
+### Fase 5 — CI/CD (completada)
+- `targets.json` ganó un campo opcional `webAppDeploymentId` por target (hoy solo
+  `exchange-rates` lo tiene). Sin cambios al workflow YAML — toda la lógica nueva vive
+  en `scripts/push-target.sh`, que ya era el punto único que la matrix del job `deploy`
+  invoca por alias.
+- Nuevo `scripts/resolve-webapp-deployment.js` (hermano de `resolve-target.js`, mismo
+  patrón, deliberadamente sin compartir módulo con él — no vale la pena el riesgo de
+  tocar un script ya confiado en CI por unas pocas líneas compartidas): devuelve el
+  `webAppDeploymentId` del alias, o string vacío si no tiene uno configurado (no es un
+  error — no todo target necesita un Web App).
+- `push-target.sh`: después de `clasp push --force`, si el alias tiene
+  `webAppDeploymentId`, corre `clasp deploy -i <id>` para que la URL pública sirva el
+  código nuevo (`clasp push` por sí solo NO actualiza lo que responde un Web App ya
+  desplegado — congela una versión en el momento del deploy).
+- Mismo gate de aprobación manual (`production` environment) que ya existía — sin
+  camino separado/más liviano para el redeploy del Web App.
+- `AGENTS.md` actualizado: la línea "no versioned clasp deploy — YAGNI" ya no aplica.
+- `docs/ci.md` con sección nueva "Web App redeploys (GET_CLP)".
+- 80/80 tests (3 nuevos para `resolveWebAppDeploymentId`), lint limpio, sintaxis de
+  shell verificada con `bash -n`.
 
 ### Fase 6 — Docs
 - `pf-sheets/docs/api.md` nuevo (mismo estilo que `pf-rates/docs/api.md`): contrato del

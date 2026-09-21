@@ -176,3 +176,33 @@ code.
 See [`development.md`](development.md#adding-a-new-documenttarget-scaling-to-n-sheets)
 — the `deploy` job matrixes over every entry in `targets.json`, so adding a document
 never requires a pipeline change.
+
+## Web App redeploys (GET_CLP)
+
+`clasp push` updates a target's Apps Script project code, but **does not** by itself
+update what a live Web App URL serves — a Web App deployment freezes a specific code
+version at the moment it's deployed (see
+[`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
+for how that deployment was first created, and
+[`../plan-get-clp-webapp.md`](../plan-get-clp-webapp.md) for the full design). So for any
+target that has one, `scripts/push-target.sh` runs one extra step after `clasp push`:
+
+```bash
+clasp deploy -i <webAppDeploymentId>
+```
+
+`-i <id>` reuses the existing deployment/URL (never creates a new one, which would
+change the URL every consumer sheet is hardcoded to call). The ID comes from
+`targets.json`'s optional `webAppDeploymentId` field, resolved via
+`scripts/resolve-webapp-deployment.js`; a target with no such field silently skips this
+step — not every target needs a Web App (today only `exchange-rates` does).
+
+This still goes through the exact same `Approval Gate` as the `clasp push` step — there
+is no separate/lighter approval path for Web App redeploys, since they expand the
+public-facing surface of the system just as much as (arguably more than) a code push
+that only affects the bound macro.
+
+**Rollback for the Web App specifically:** same mechanism as the rest of this
+pipeline—revert the offending commit, merge to `main`, and the next `clasp push` +
+`clasp deploy -i <id>` cycle serves the previous code again at the same URL. There is no
+separate "pin an old Web App version" step to remember.

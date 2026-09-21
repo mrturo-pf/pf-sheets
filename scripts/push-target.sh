@@ -33,3 +33,19 @@ echo "==> Pushing target '${alias_name}' using ${config_path}"
 cp "${full_config_path}" "${repo_root}/.clasp.json"
 (cd "${repo_root}" && npx clasp push --force)
 echo "==> Done: ${alias_name}"
+
+# Redeploy the Web App, if this target has one configured (see
+# targets.json's optional webAppDeploymentId -- today only
+# 'exchange-rates' has one, for GET_CLP; see
+# docs/getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project).
+# `clasp push` alone does NOT update a live Web App URL's served code --
+# a Web App deployment freezes a specific version at deploy time, so this
+# step is what actually makes new doGet code reachable at the existing
+# URL. `-i <id>` reuses the same deployment/URL instead of creating a
+# brand new one.
+webapp_deployment_id="$(node "${repo_root}/scripts/resolve-webapp-deployment.js" "${alias_name}")"
+if [[ -n "${webapp_deployment_id}" ]]; then
+  echo "==> Redeploying Web App for '${alias_name}' (deployment ${webapp_deployment_id})"
+  (cd "${repo_root}" && npx clasp deploy -i "${webapp_deployment_id}" -d "CI redeploy: ${GITHUB_SHA:-local}")
+  echo "==> Web App redeployed: ${alias_name}"
+fi
