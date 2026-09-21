@@ -129,6 +129,6 @@ Quick reference:
 ## Database
 
 None — this repo has no database of its own. It calls `pf-rates` over HTTP
-(`POST /exports/financial-data`) and writes only to the Google Sheet grid (`ECON_INDEX` tab); `pf-rates`
+(`POST /exports/financial-data`) and writes only to the Google Sheet grid (`VALUES` tab); `pf-rates`
 remains the schema owner for the underlying exchange-rate and economic-index data (see
 [`pf-db`](../pf-db) for the real source of truth).

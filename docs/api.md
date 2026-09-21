@@ -5,7 +5,7 @@
 Entry point, implemented in `src/interfaces/`. Bound to the "Rate Values →
 Update" menu item (`onOpen()`). Kept as `updateExchangeRates` (not renamed)
 so any existing menu/time-driven trigger binding to this exact function
-name keeps working, even though it now syncs the `ECON_INDEX` tab from
+name keeps working, even though it now syncs the `VALUES` tab from
 the combined export instead of exchange rates directly.
 
 1. Calls `POST {PF_RATES_BASE_URL}/exports/financial-data` on
@@ -17,14 +17,14 @@ the combined export instead of exchange rates directly.
 3. Extracts the `ECONOMIC_INDEX` rows out of the CSV, converted to a
    legacy-shaped row set (pure, see `extractEconomicIndexCsvRows` in
    `src/domain/`).
-4. Performs an incremental upsert into the `ECON_INDEX` sheet tab,
+4. Performs an incremental upsert into the `VALUES` sheet tab,
    each keyed by `CODE|YYYY-MM-DD`:
    - Updates `value` + `last_modified_at` when the value changed.
    - Leaves untouched rows whose value didn't change (preserves the original
      `last_modified_at`).
    - Appends new rows with an auto-incremented `id` and the current timestamp.
    - Never deletes rows absent from the CSV.
-5. Shows one summary via `spreadsheet.toast(...)` covering the `ECON_INDEX` tab.
+5. Shows one summary via `spreadsheet.toast(...)` covering the `VALUES` tab.
 
 ## Expected CSV contract (from `pf-rates`)
 

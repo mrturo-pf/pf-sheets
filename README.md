@@ -9,7 +9,7 @@ script.google.com web editor.
 This repo owns the **bound Apps Script project** attached to the exchange-rates Google
 Sheet: a macro (`updateExchangeRates`) that triggers a CSV export from
 [`pf-rates`](../pf-rates), reads the resulting file from Google Drive, and performs an
-incremental upsert into the sheet's `ECON_INDEX` tab.
+incremental upsert into the sheet's `VALUES` tab.
 
 - Development happens **locally**, in this repo — not in the Apps Script web editor.
 - Changes are pushed to the live Apps Script project automatically on merge to `main`.
