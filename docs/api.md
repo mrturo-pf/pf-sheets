@@ -5,8 +5,8 @@
 Entry point, implemented in `src/interfaces/`. Bound to the "Rate Values →
 Update" menu item (`onOpen()`). Kept as `updateExchangeRates` (not renamed)
 so any existing menu/time-driven trigger binding to this exact function
-name keeps working -- it now syncs **both** tabs from one combined export
-instead of a second macro being added alongside it.
+name keeps working, even though it now syncs the `ECON_INDEX` tab from
+the combined export instead of exchange rates directly.
 
 1. Calls `POST {PF_RATES_BASE_URL}/exports/financial-data` on
    [`pf-rates`](../../pf-rates) with `{ lookback_days, forward_days }`, authenticated
@@ -14,16 +14,17 @@ instead of a second macro being added alongside it.
    export (exchange rates + economic indices in one CSV) -- see
    [`pf-rates/docs/api.md`](../../pf-rates/docs/api.md) for the endpoint contract.
 2. Reads the resulting CSV from Google Drive (`EXPORT_DRIVE_FILE_ID` Script Property).
-3. Splits the CSV by `series_type` into two legacy-shaped row sets (pure,
-   see `splitCombinedCsvBySeriesType` in `src/domain/`).
-4. Performs an incremental upsert into **both** the `EXCH_RATE` and
-   `ECON_INDEX` sheet tabs, each keyed by `CODE|YYYY-MM-DD`:
+3. Extracts the `ECONOMIC_INDEX` rows out of the CSV, converted to a
+   legacy-shaped row set (pure, see `extractEconomicIndexCsvRows` in
+   `src/domain/`).
+4. Performs an incremental upsert into the `ECON_INDEX` sheet tab,
+   each keyed by `CODE|YYYY-MM-DD`:
    - Updates `value` + `last_modified_at` when the value changed.
    - Leaves untouched rows whose value didn't change (preserves the original
      `last_modified_at`).
    - Appends new rows with an auto-incremented `id` and the current timestamp.
    - Never deletes rows absent from the CSV.
-5. Shows one summary via `spreadsheet.toast(...)` covering both tabs.
+5. Shows one summary via `spreadsheet.toast(...)` covering the `ECON_INDEX` tab.
 
 ## Expected CSV contract (from `pf-rates`)
 
@@ -38,8 +39,10 @@ instead of a second macro being added alongside it.
 
 Economic-index rows are already expanded to one row per calendar day
 (pf-rates repeats each month's stored value across every day in it) --
-`pf-sheets` does not do any expansion itself, it only routes rows by
-`series_type` and reuses the exact same per-day upsert logic for both.
+`pf-sheets` does not do any expansion itself. It only keeps the
+`ECONOMIC_INDEX` rows from this combined CSV; `EXCHANGE_RATE` rows are
+present in the response but currently unused here (`pf-sheets` no longer
+maintains an `EXCH_RATE` tab).
 
 Rows with an unrecognized `series_type` (or missing/incomplete columns)
 are skipped and their line numbers logged, same "skip and count" behavior

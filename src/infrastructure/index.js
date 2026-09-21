@@ -65,8 +65,8 @@ function fetchCsvRows(driveApp, utilities, fileId) {
 
 /**
  * Reads the current data rows (excluding the header) of a sheet, assuming
- * the shared 5-column financial-data layout used by both the EXCH_RATE and
- * ECON_INDEX tabs: id, code, date, value, last_modified_at.
+ * the shared 5-column financial-data layout used by the ECON_INDEX tab:
+ * id, code, date, value, last_modified_at.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @returns {Array<Array<*>>}
  */

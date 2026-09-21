@@ -65,9 +65,9 @@ and set:
 These replace the values that were previously hardcoded in source. See
 [`api.md`](api.md) for how the code reads them.
 
-The spreadsheet must have both an `EXCH_RATE` tab and an `ECON_INDEX` tab
-(same 5-column layout: id, code, date, value, last_modified_at) --
-`updateExchangeRates()` upserts into both from the one combined CSV.
+The spreadsheet must have an `ECON_INDEX` tab (5-column
+layout: id, code, date, value, last_modified_at) -- `updateExchangeRates()`
+upserts into it from the CSV.
 
 ## Run tests
 

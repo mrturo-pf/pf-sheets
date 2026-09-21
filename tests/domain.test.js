@@ -6,7 +6,7 @@ const {
   buildRegistryIndex,
   computeUpsertPlan,
   resolveCombinedCsvColumns,
-  splitCombinedCsvBySeriesType,
+  extractEconomicIndexCsvRows,
 } = require("../src/domain");
 
 const TZ = "America/Santiago";
@@ -241,8 +241,8 @@ describe("resolveCombinedCsvColumns", () => {
   });
 });
 
-describe("splitCombinedCsvBySeriesType", () => {
-  it("routes EXCHANGE_RATE and ECONOMIC_INDEX rows into separate legacy-shaped CSVs", () => {
+describe("extractEconomicIndexCsvRows", () => {
+  it("extracts ECONOMIC_INDEX rows into a legacy-shaped CSV, dropping EXCHANGE_RATE rows without flagging them as skipped", () => {
     const combinedCsvRows = [
       ["series_type", "code", "period_date", "value"],
       ["EXCHANGE_RATE", "USD", "2026-01-14", "950"],
@@ -250,15 +250,10 @@ describe("splitCombinedCsvBySeriesType", () => {
       ["EXCHANGE_RATE", "EUR", "2026-01-14", "1020"],
     ];
 
-    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
 
     expect(result.isComplete).toBe(true);
     expect(result.skippedRowNumbers).toEqual([]);
-    expect(result.exchangeRateCsvRows).toEqual([
-      ["currency_code", "rate_date", "value_clp"],
-      ["USD", "2026-01-14", "950"],
-      ["EUR", "2026-01-14", "1020"],
-    ]);
     expect(result.economicIndexCsvRows).toEqual([
       ["currency_code", "rate_date", "value_clp"],
       ["IPC_CL", "2026-01-14", "125.5"],
@@ -271,7 +266,7 @@ describe("splitCombinedCsvBySeriesType", () => {
       ["economic_index", "IPC_CL", "2026-01-14", "125.5"],
     ];
 
-    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
 
     expect(result.economicIndexCsvRows).toEqual([
       ["currency_code", "rate_date", "value_clp"],
@@ -286,10 +281,9 @@ describe("splitCombinedCsvBySeriesType", () => {
       ["SOMETHING_ELSE", "XYZ", "2026-01-14", "1"],
     ];
 
-    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
 
     expect(result.skippedRowNumbers).toEqual([3]);
-    expect(result.exchangeRateCsvRows).toHaveLength(2);
     expect(result.economicIndexCsvRows).toHaveLength(1); // header only
   });
 
@@ -299,21 +293,20 @@ describe("splitCombinedCsvBySeriesType", () => {
       ["EXCHANGE_RATE", "USD", "2026-01-14"],
     ];
 
-    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
 
     expect(result.skippedRowNumbers).toEqual([2]);
   });
 
-  it("returns isComplete=false and empty results when the header is missing columns", () => {
+  it("returns isComplete=false and an empty result when the header is missing columns", () => {
     const combinedCsvRows = [
       ["series_type", "code"],
       ["EXCHANGE_RATE", "USD"],
     ];
 
-    const result = splitCombinedCsvBySeriesType(combinedCsvRows);
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
 
     expect(result.isComplete).toBe(false);
-    expect(result.exchangeRateCsvRows).toEqual([["currency_code", "rate_date", "value_clp"]]);
     expect(result.economicIndexCsvRows).toEqual([["currency_code", "rate_date", "value_clp"]]);
   });
 
@@ -323,12 +316,12 @@ describe("splitCombinedCsvBySeriesType", () => {
       ["ECONOMIC_INDEX", "IPC_CL", "2026-01-14", "125.5"],
       ["ECONOMIC_INDEX", "IPC_CL", "2026-01-15", "125.5"],
     ];
-    const split = splitCombinedCsvBySeriesType(combinedCsvRows);
-    const columnResolution = resolveCsvColumns(split.economicIndexCsvRows[0]);
+    const extraction = extractEconomicIndexCsvRows(combinedCsvRows);
+    const columnResolution = resolveCsvColumns(extraction.economicIndexCsvRows[0]);
 
     const plan = computeUpsertPlan({
       existingRows: [],
-      csvRows: split.economicIndexCsvRows,
+      csvRows: extraction.economicIndexCsvRows,
       columns: columnResolution.columns,
       timeZone: TZ,
       executionTimestamp: new Date("2026-01-15T12:00:00Z"),

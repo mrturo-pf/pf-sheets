@@ -17,7 +17,6 @@
  * safe and what it does NOT let us do (unit-test this file in isolation).
  */
 
-var EXCH_RATE_SHEET_NAME = "EXCH_RATE";
 var ECON_INDEX_SHEET_NAME = "ECON_INDEX";
 
 /**
@@ -28,11 +27,12 @@ function onOpen() {
 }
 
 /**
- * Syncs one sheet tab against its already-split, legacy-shaped CSV rows
- * (currency_code,rate_date,value_clp -- see splitCombinedCsvBySeriesType).
- * Both EXCH_RATE and ECON_INDEX share the exact same upsert algorithm and
- * 5-column layout, so this one helper drives both instead of duplicating
- * the load/compute/write sequence per tab.
+ * Syncs one sheet tab against its already-extracted, legacy-shaped CSV
+ * rows (currency_code,rate_date,value_clp -- see extractEconomicIndexCsvRows).
+ * Currently only called for the ECON_INDEX tab, but kept generic (sheet
+ * name + rows as parameters) instead of hardcoding ECON_INDEX inside it,
+ * so a second tab could reuse the same load/compute/write sequence again
+ * without duplicating it.
  * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet
  * @param {string} sheetName
  * @param {Array<Array<*>>} legacyCsvRows
@@ -78,20 +78,18 @@ function syncSheetTab(spreadsheet, sheetName, legacyCsvRows) {
 /**
  * Synchronizes financial data: triggers the pf-rates combined export,
  * reads the resulting CSV from Drive regardless of that call's outcome,
- * splits it by series type, and performs an incremental upsert into both
- * the EXCH_RATE and ECON_INDEX sheet tabs. See docs/api.md for the full
+ * extracts the ECON_INDEX rows out of it, and performs an incremental
+ * upsert into the ECON_INDEX sheet tab. See docs/api.md for the full
  * behavior contract. Kept as `updateExchangeRates` (not renamed) so any
- * existing menu/trigger binding to this exact function name keeps working
- * -- it now covers both tabs internally instead of a parallel macro being
- * added alongside it.
+ * existing menu/trigger binding to this exact function name keeps working,
+ * even though it now syncs the ECON_INDEX tab rather than exchange rates
+ * directly.
  */
 function updateExchangeRates() {
   var config = getConfig(PropertiesService);
 
   console.log(
     'Starting financial data synchronization. Sheets="' +
-      EXCH_RATE_SHEET_NAME +
-      '", "' +
       ECON_INDEX_SHEET_NAME +
       '" DriveFileId="' +
       config.driveFileId +
@@ -140,50 +138,39 @@ function updateExchangeRates() {
     return;
   }
 
-  // Step 3: split the combined CSV by series type (pure -- see src/domain/).
-  var split = splitCombinedCsvBySeriesType(rawCsvRows);
-  console.log("Detected headers: [" + split.normalizedHeader.join(", ") + "]");
-  if (!split.isComplete) {
+  // Step 3: extract the ECON_INDEX rows from the combined CSV (pure --
+  // see src/domain/).
+  var extraction = extractEconomicIndexCsvRows(rawCsvRows);
+  console.log("Detected headers: [" + extraction.normalizedHeader.join(", ") + "]");
+  if (!extraction.isComplete) {
     var missingColumnsMessage =
       "CSV is missing one or more required columns ('series_type', 'code', 'period_date', 'value').";
     console.error(missingColumnsMessage);
     showAlert(SpreadsheetApp, missingColumnsMessage);
     return;
   }
-  if (split.skippedRowNumbers.length > 0) {
+  if (extraction.skippedRowNumbers.length > 0) {
     console.warn(
       "Skipped " +
-        split.skippedRowNumbers.length +
+        extraction.skippedRowNumbers.length +
         " row(s) with an unrecognized/incomplete series_type at line(s): " +
-        split.skippedRowNumbers.join(", ")
+        extraction.skippedRowNumbers.join(", ")
     );
   }
 
-  // Step 4: locate both target sheets and upsert each one (pure planning
+  // Step 4: locate the ECON_INDEX sheet tab and upsert it (pure planning
   // logic shared via syncSheetTab -- see above).
   var spreadsheet = getActiveSpreadsheet(SpreadsheetApp);
-  var exchangeRateSummary = syncSheetTab(spreadsheet, EXCH_RATE_SHEET_NAME, split.exchangeRateCsvRows);
-  if (!exchangeRateSummary) {
-    return;
-  }
-  var economicIndexSummary = syncSheetTab(spreadsheet, ECON_INDEX_SHEET_NAME, split.economicIndexCsvRows);
+  var economicIndexSummary = syncSheetTab(spreadsheet, ECON_INDEX_SHEET_NAME, extraction.economicIndexCsvRows);
   if (!economicIndexSummary) {
     return;
   }
 
-  // Step 5: summarize both tabs in one toast.
+  // Step 5: summarize the sync result in one toast.
   var summaryMessage =
     "[" +
     apiStatusSummary +
     "] " +
-    EXCH_RATE_SHEET_NAME +
-    " -> Updated: " +
-    exchangeRateSummary.updatedCount +
-    " | New: " +
-    exchangeRateSummary.insertedCount +
-    " | Untouched: " +
-    exchangeRateSummary.untouchedCount +
-    ". " +
     ECON_INDEX_SHEET_NAME +
     " -> Updated: " +
     economicIndexSummary.updatedCount +
