@@ -65,9 +65,14 @@ and set:
 These replace the values that were previously hardcoded in source. See
 [`api.md`](api.md) for how the code reads them.
 
-The spreadsheet must have a `VALUES` tab (5-column
-layout: id, code, date, value, last_modified_at) -- `updateExchangeRates()`
-upserts into it from the CSV.
+The spreadsheet must have a `VALUES` tab with 5 columns, in this exact
+order: ID, Code, Date, CLP Value and Last Modified -- `updateExchangeRates()`
+upserts into it from the CSV. The header row's actual text is purely
+decorative: Apps Script never reads it (see `readExistingRows`/`writeRows`
+in `src/infrastructure/`, both start at row 2), so relabeling a header --
+e.g. showing "Last Modified" instead of "last_modified_at" -- is safe at
+any time, with no code change and no redeploy. Only the **column order**
+matters.
 
 ## Run tests
 

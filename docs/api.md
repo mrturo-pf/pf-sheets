@@ -25,7 +25,26 @@ the combined export instead of exchange rates directly.
      `last_modified_at`).
    - Appends new rows with an auto-incremented `id` and the current timestamp.
    - Never deletes rows absent from the CSV.
+   - Rewrites the whole grid sorted by **date, then code, then
+     last_modified_at** (all ascending; see `compareSheetRows` and
+     "Row order" below) instead of just growing with new rows appended
+     at the bottom.
 5. Shows one summary via `spreadsheet.toast(...)` covering the `VALUES` tab.
+
+## Row order
+
+Every sync rewrites the `VALUES` grid sorted with this priority:
+
+1. **Date** (`period_date` / the sheet's `date` column) -- ascending.
+2. **Code** -- ascending, alphabetical, as a tie-breaker within the same date.
+3. **last_modified_at** -- ascending, as a final tie-breaker (in practice
+   this rarely matters, since `date + code` is already the upsert's unique
+   key -- see "Expected CSV contract" below).
+
+This is computed once, purely, in `compareSheetRows` (`src/domain/`) and
+applied at the end of `computeUpsertPlan`, so the sheet ends up in the same
+predictable order after every run regardless of the order rows arrived in
+the combined CSV or how long they've existed in the sheet.
 
 ## Expected CSV contract (from `pf-rates`)
 

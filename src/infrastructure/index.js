@@ -66,7 +66,10 @@ function fetchCsvRows(driveApp, utilities, fileId) {
 /**
  * Reads the current data rows (excluding the header) of a sheet, assuming
  * the shared 5-column financial-data layout used by the VALUES tab:
- * id, code, date, value, last_modified_at.
+ * id, code, date, value, last_modified_at -- by column position, not by
+ * header text. The header row (row 1) is never read; whatever label a
+ * human types there (e.g. "Last Modified") is purely decorative and can
+ * be changed freely without touching this function.
  * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
  * @returns {Array<Array<*>>}
  */

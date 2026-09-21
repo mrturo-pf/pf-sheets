@@ -4,6 +4,7 @@ const {
   resolveCsvColumns,
   parseCsvDataRow,
   buildRegistryIndex,
+  compareSheetRows,
   computeUpsertPlan,
   resolveCombinedCsvColumns,
   applySheetCodeAlias,
@@ -154,7 +155,7 @@ describe("computeUpsertPlan", () => {
     const plan = computeUpsertPlan({ existingRows, csvRows, columns, timeZone: TZ, executionTimestamp });
 
     expect(plan.insertedCount).toBe(1);
-    expect(plan.rows[1]).toEqual([6, "EUR", "2026-01-14", 1020, executionTimestamp]);
+    expect(plan.rows).toContainEqual([6, "EUR", "2026-01-14", 1020, executionTimestamp]);
   });
 
   it("keeps existing rows absent from the CSV, untouched", () => {
@@ -226,6 +227,52 @@ describe("computeUpsertPlan", () => {
 
     const clpRow = plan.rows.find((row) => row[1] === "CLP");
     expect(clpRow[0]).toBe(4); // auto-incremented past the highest existing id (3)
+  });
+
+  it("returns rows sorted by date, then code, then last_modified_at", () => {
+    const existingRows = [
+      [1, "USD", "2026-01-14", 950, new Date("2026-01-14T09:00:00Z")],
+      [2, "EUR", "2026-01-10", 1020, new Date("2026-01-10T09:00:00Z")],
+    ];
+    const csvRows = [
+      ["currency_code", "rate_date", "value_clp"],
+      ["clp", "2026-01-14", "1"], // same date as USD, but "CLP" < "USD"
+    ];
+
+    const plan = computeUpsertPlan({ existingRows, csvRows, columns, timeZone: TZ, executionTimestamp });
+
+    expect(plan.rows.map((row) => row[1])).toEqual(["EUR", "CLP", "USD"]);
+  });
+});
+
+describe("compareSheetRows", () => {
+  it("orders by date first, regardless of code", () => {
+    const earlier = [1, "ZZZ", "2026-01-01", 1, new Date("2026-01-01T12:00:00Z")];
+    const later = [2, "AAA", "2026-01-02", 1, new Date("2026-01-01T12:00:00Z")];
+
+    expect(compareSheetRows(earlier, later, TZ)).toBeLessThan(0);
+    expect(compareSheetRows(later, earlier, TZ)).toBeGreaterThan(0);
+  });
+
+  it("breaks a same-date tie by code", () => {
+    const eur = [1, "EUR", "2026-01-01", 1, new Date("2026-01-01T12:00:00Z")];
+    const usd = [2, "USD", "2026-01-01", 1, new Date("2026-01-01T12:00:00Z")];
+
+    expect(compareSheetRows(eur, usd, TZ)).toBeLessThan(0);
+  });
+
+  it("breaks a same-date-and-code tie by last_modified_at", () => {
+    const olderModified = [1, "USD", "2026-01-01", 1, new Date("2026-01-01T09:00:00Z")];
+    const newerModified = [2, "USD", "2026-01-01", 1, new Date("2026-01-01T10:00:00Z")];
+
+    expect(compareSheetRows(olderModified, newerModified, TZ)).toBeLessThan(0);
+  });
+
+  it("treats a real Date and an equivalent 'YYYY-MM-DD' string in the date column as the same date", () => {
+    const asDate = [1, "USD", new Date("2026-01-01T12:00:00Z"), 1, new Date("2026-01-01T12:00:00Z")];
+    const asString = [1, "USD", "2026-01-01", 1, new Date("2026-01-01T12:00:00Z")];
+
+    expect(compareSheetRows(asDate, asString, TZ)).toBe(0);
   });
 });
 

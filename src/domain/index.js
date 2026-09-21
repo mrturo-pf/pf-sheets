@@ -129,6 +129,35 @@ function buildRegistryIndex(existingRows, timeZone) {
 }
 
 /**
+ * Orders two VALUES-sheet rows ([id, code, date, value, last_modified_at])
+ * by the sync's sort priority: (1) date, (2) code, (3) last_modified_at,
+ * all ascending. Tolerant of a mixed date type across rows -- an existing
+ * row's date/last_modified_at may be a real Date straight from Sheets,
+ * while a freshly inserted/updated row's is a "YYYY-MM-DD" string or a
+ * JS Date -- by normalizing the date column through normalizeDateKey and
+ * the last_modified_at column through `new Date(...)` before comparing.
+ * @param {Array<*>} rowA
+ * @param {Array<*>} rowB
+ * @param {string} timeZone
+ * @returns {number}
+ */
+function compareSheetRows(rowA, rowB, timeZone) {
+  var dateKeyA = normalizeDateKey(rowA[2], timeZone);
+  var dateKeyB = normalizeDateKey(rowB[2], timeZone);
+  if (dateKeyA !== dateKeyB) {
+    return dateKeyA < dateKeyB ? -1 : 1;
+  }
+
+  var codeA = String(rowA[1]).trim().toUpperCase();
+  var codeB = String(rowB[1]).trim().toUpperCase();
+  if (codeA !== codeB) {
+    return codeA < codeB ? -1 : 1;
+  }
+
+  return new Date(rowA[4]).getTime() - new Date(rowB[4]).getTime();
+}
+
+/**
  * Computes the full upsert delta between the current sheet rows and the
  * incoming CSV, without mutating its inputs:
  *   - updates value + last_modified_at when the value actually changed
@@ -137,7 +166,11 @@ function buildRegistryIndex(existingRows, timeZone) {
  *     original last_modified_at);
  *   - appends new rows with an auto-incremented id and the execution
  *     timestamp;
- *   - never removes a row absent from the CSV.
+ *   - never removes a row absent from the CSV;
+ *   - returns `rows` sorted by date, then code, then last_modified_at
+ *     (see compareSheetRows) so the sheet stays in a predictable order
+ *     across every sync instead of just growing with appended rows at
+ *     the bottom.
  * @param {{existingRows: Array<Array<*>>, csvRows: Array<Array<*>>, columns: {currency:number,date:number,value:number}, timeZone: string, executionTimestamp: Date}} options
  * @returns {{rows: Array<Array<*>>, updatedCount: number, insertedCount: number, untouchedCount: number, skippedRowNumbers: number[]}}
  */
@@ -188,6 +221,10 @@ function computeUpsertPlan(options) {
       insertedCount++;
     }
   }
+
+  rows.sort(function (rowA, rowB) {
+    return compareSheetRows(rowA, rowB, timeZone);
+  });
 
   return {
     rows: rows,
@@ -324,6 +361,7 @@ if (typeof module !== "undefined") {
     resolveCsvColumns: resolveCsvColumns,
     parseCsvDataRow: parseCsvDataRow,
     buildRegistryIndex: buildRegistryIndex,
+    compareSheetRows: compareSheetRows,
     computeUpsertPlan: computeUpsertPlan,
     resolveCombinedCsvColumns: resolveCombinedCsvColumns,
     applySheetCodeAlias: applySheetCodeAlias,
