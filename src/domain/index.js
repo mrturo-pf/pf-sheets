@@ -13,12 +13,11 @@
 
 var REQUIRED_CSV_COLUMNS = ["currency_code", "rate_date", "value_clp"];
 
-// Combined pf-rates export (POST /exports/financial-data) header + series
-// discriminator values -- see pf-rates/docs/api.md for the authoritative
-// contract.
+// Combined pf-rates export (POST /exports/financial-data) header --
+// see pf-rates/docs/api.md for the authoritative contract. The
+// series_type discriminator value itself is intentionally not modeled
+// here: pf-sheets no longer branches on it (see buildValuesCsvRows).
 var REQUIRED_COMBINED_CSV_COLUMNS = ["series_type", "code", "period_date", "value"];
-var SERIES_TYPE_EXCHANGE_RATE = "EXCHANGE_RATE";
-var SERIES_TYPE_ECONOMIC_INDEX = "ECONOMIC_INDEX";
 
 /**
  * Normalizes any date representation (a real Date, or a CSV/sheet string)
@@ -296,33 +295,40 @@ function applySheetCodeAlias(rawCode) {
 }
 
 /**
- * Extracts the ECON_INDEX rows out of a combined pf-rates export CSV
- * (series_type,code,period_date,value), converting them to the
- * legacy-shaped rows (currency_code,rate_date,value_clp) that the existing
+ * Converts every row of a combined pf-rates export CSV
+ * (series_type,code,period_date,value) into the legacy-shaped rows
+ * (currency_code,rate_date,value_clp) that the existing
  * resolveCsvColumns/computeUpsertPlan pipeline already knows how to
- * upsert unchanged -- so RAT_ECON_INDEX ends up in the same 5-column sheet
- * layout (id, code, date, value, last_modified_at) with no separate
- * upsert algorithm to write or maintain.
+ * upsert unchanged -- one shared upsert algorithm for the whole VALUES
+ * sheet layout (id, code, date, value, last_modified_at), no matter
+ * which series_type a row came in as.
  *
- * EXCHANGE_RATE rows are present in the combined CSV (pf-rates still
- * returns both series types) but are intentionally dropped here --
- * pf-sheets no longer maintains an EXCH_RATE tab. They are a recognized,
- * valid series type, so they are NOT counted as skipped/invalid; only
- * rows with a truly unrecognized series_type (or too few columns) are
- * skipped and their 1-based line numbers reported, mirroring
- * computeUpsertPlan's own "skip and count" behavior for malformed rows
- * rather than aborting the whole sync over one bad line.
+ * pf-rates' own EXCHANGE_RATE / ECONOMIC_INDEX split (see
+ * pf-rates/src/rates/shared/constants.py) is that service's internal
+ * classification of *how* it resolves a value -- it does NOT map onto
+ * "currency vs. economic index" the way a human would expect. `UF` and
+ * `UTM` are both exported there as `EXCHANGE_RATE`, even though most
+ * people in Chile call them economic indices; only `IPC_CL` is actually
+ * `ECONOMIC_INDEX`. An earlier version of this function filtered by
+ * series_type and, as a direct consequence, silently dropped UF and UTM
+ * from this sheet -- pf-sheets does not repeat pf-rates' split at all
+ * anymore: every code pf-rates exports lands in the VALUES tab.
+ *
+ * Only structurally malformed rows (too few columns) are skipped and
+ * their 1-based line numbers reported, mirroring computeUpsertPlan's own
+ * "skip and count" behavior for malformed rows rather than aborting the
+ * whole sync over one bad line.
  * @param {Array<Array<*>>} combinedCsvRows
- * @returns {{economicIndexCsvRows: Array<Array<*>>, isComplete: boolean, normalizedHeader: string[], skippedRowNumbers: number[]}}
+ * @returns {{valuesCsvRows: Array<Array<*>>, isComplete: boolean, normalizedHeader: string[], skippedRowNumbers: number[]}}
  */
-function extractEconomicIndexCsvRows(combinedCsvRows) {
+function buildValuesCsvRows(combinedCsvRows) {
   var resolution = resolveCombinedCsvColumns(combinedCsvRows[0] || []);
-  var economicIndexCsvRows = [REQUIRED_CSV_COLUMNS.slice()];
+  var valuesCsvRows = [REQUIRED_CSV_COLUMNS.slice()];
   var skippedRowNumbers = [];
 
   if (!resolution.isComplete) {
     return {
-      economicIndexCsvRows: economicIndexCsvRows,
+      valuesCsvRows: valuesCsvRows,
       isComplete: false,
       normalizedHeader: resolution.normalizedHeader,
       skippedRowNumbers: skippedRowNumbers,
@@ -337,17 +343,11 @@ function extractEconomicIndexCsvRows(combinedCsvRows) {
       continue;
     }
 
-    var seriesType = String(row[columns.seriesType]).trim().toUpperCase();
-
-    if (seriesType === SERIES_TYPE_ECONOMIC_INDEX) {
-      economicIndexCsvRows.push([applySheetCodeAlias(row[columns.code]), row[columns.date], row[columns.value]]);
-    } else if (seriesType !== SERIES_TYPE_EXCHANGE_RATE) {
-      skippedRowNumbers.push(i + 1);
-    }
+    valuesCsvRows.push([applySheetCodeAlias(row[columns.code]), row[columns.date], row[columns.value]]);
   }
 
   return {
-    economicIndexCsvRows: economicIndexCsvRows,
+    valuesCsvRows: valuesCsvRows,
     isComplete: true,
     normalizedHeader: resolution.normalizedHeader,
     skippedRowNumbers: skippedRowNumbers,
@@ -365,6 +365,6 @@ if (typeof module !== "undefined") {
     computeUpsertPlan: computeUpsertPlan,
     resolveCombinedCsvColumns: resolveCombinedCsvColumns,
     applySheetCodeAlias: applySheetCodeAlias,
-    extractEconomicIndexCsvRows: extractEconomicIndexCsvRows,
+    buildValuesCsvRows: buildValuesCsvRows,
   };
 }

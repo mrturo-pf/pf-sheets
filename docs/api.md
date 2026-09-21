@@ -14,10 +14,12 @@ the combined export instead of exchange rates directly.
    export (exchange rates + economic indices in one CSV) -- see
    [`pf-rates/docs/api.md`](../../pf-rates/docs/api.md) for the endpoint contract.
 2. Reads the resulting CSV from Google Drive (`EXPORT_DRIVE_FILE_ID` Script Property).
-3. Extracts the `ECONOMIC_INDEX` rows out of the CSV, converted to a
-   legacy-shaped row set (pure, see `extractEconomicIndexCsvRows` in
-   `src/domain/`). Each row's `code` is passed through
-   `applySheetCodeAlias` on the way -- see "Code aliases" below.
+3. Converts every row of the CSV to a legacy-shaped row set (pure, see
+   `buildValuesCsvRows` in `src/domain/`) -- every `code` pf-rates
+   exports, regardless of its own `series_type`; see "Expected CSV
+   contract" below for why this does NOT filter by `series_type`. Each
+   row's `code` is passed through `applySheetCodeAlias` on the way --
+   see "Code aliases" below.
 4. Performs an incremental upsert into the `VALUES` sheet tab,
    each keyed by `CODE|YYYY-MM-DD`:
    - Updates `value` + `last_modified_at` when the value changed.
@@ -59,13 +61,31 @@ the combined CSV or how long they've existed in the sheet.
 
 Economic-index rows are already expanded to one row per calendar day
 (pf-rates repeats each month's stored value across every day in it) --
-`pf-sheets` does not do any expansion itself. It only keeps the
-`ECONOMIC_INDEX` rows from this combined CSV; `EXCHANGE_RATE` rows are
-present in the response but currently unused here (`pf-sheets` no longer
-maintains an `EXCH_RATE` tab).
+`pf-sheets` does not do any expansion itself.
 
-Rows with an unrecognized `series_type` (or missing/incomplete columns)
-are skipped and their line numbers logged, same "skip and count" behavior
+**`pf-sheets` does not filter by `series_type` at all -- every row lands in
+the `VALUES` tab.** This matters because `series_type` is `pf-rates`'
+*internal* classification of how it resolves a value, not a "currency vs.
+economic index" split a human would expect. Concretely (see
+[`pf-rates/src/rates/shared/constants.py`](../../pf-rates/src/rates/shared/constants.py)):
+
+| Code | `series_type` in this CSV |
+| --- | --- |
+| `USD`, `EUR` | `EXCHANGE_RATE` |
+| `UF` | `EXCHANGE_RATE` (even though most people in Chile call it an economic index) |
+| `UTM` | `EXCHANGE_RATE` (same reason as `UF`) |
+| `IPC_CL` | `ECONOMIC_INDEX` (currently the *only* code with this series_type) |
+
+An earlier version of `pf-sheets` filtered this CSV down to
+`ECONOMIC_INDEX` rows only (when the separate `EXCH_RATE` tab was
+dropped in favor of one `VALUES` tab) and, as a direct consequence,
+silently dropped `UF` and `UTM` from the sheet -- only `IPC_CL` kept
+syncing. `buildValuesCsvRows` (`src/domain/`) fixed this by dropping the
+`series_type` check entirely; it is read purely for header-completeness
+validation now, never to filter rows.
+
+Rows with too few columns (structurally malformed) are still skipped and
+their line numbers logged, same "skip and count" behavior
 `computeUpsertPlan` already uses for malformed rows.
 
 See [`pf-rates/docs/api.md`](../../pf-rates/docs/api.md) for the authoritative contract
@@ -83,7 +103,7 @@ This is a **presentation-only relabeling local to `pf-sheets`**: `pf-rates`,
 `pf-db`, and any other consumer of the combined export keep seeing/storing
 `UF` exactly as before. The mapping lives in one place,
 `SHEET_CODE_ALIASES` in `src/domain/index.js`, and is applied by
-`applySheetCodeAlias` right where `extractEconomicIndexCsvRows` builds each
+`applySheetCodeAlias` right where `buildValuesCsvRows` builds each
 row -- nowhere else needs to know about it.
 
 **To rename another code later** (e.g. show `UTM` as something else), add

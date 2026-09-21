@@ -27,8 +27,8 @@ function onOpen() {
 }
 
 /**
- * Syncs one sheet tab against its already-extracted, legacy-shaped CSV
- * rows (currency_code,rate_date,value_clp -- see extractEconomicIndexCsvRows).
+ * Syncs one sheet tab against its already-converted, legacy-shaped CSV
+ * rows (currency_code,rate_date,value_clp -- see buildValuesCsvRows).
  * Currently only called for the VALUES tab, but kept generic (sheet
  * name + rows as parameters) instead of hardcoding VALUES inside it,
  * so a second tab could reuse the same load/compute/write sequence again
@@ -78,11 +78,13 @@ function syncSheetTab(spreadsheet, sheetName, legacyCsvRows) {
 /**
  * Synchronizes financial data: triggers the pf-rates combined export,
  * reads the resulting CSV from Drive regardless of that call's outcome,
- * extracts the economic-index rows out of it, and performs an incremental
- * upsert into the VALUES sheet tab. See docs/api.md for the full
- * behavior contract. Kept as `updateExchangeRates` (not renamed) so any
- * existing menu/trigger binding to this exact function name keeps working,
- * even though it now syncs the VALUES tab rather than exchange rates
+ * converts every row of it (every code pf-rates exports, regardless of
+ * its own EXCHANGE_RATE/ECONOMIC_INDEX classification -- see
+ * buildValuesCsvRows), and performs an incremental upsert into the
+ * VALUES sheet tab. See docs/api.md for the full behavior contract.
+ * Kept as `updateExchangeRates` (not renamed) so any existing
+ * menu/trigger binding to this exact function name keeps working, even
+ * though it now syncs the VALUES tab rather than exchange rates
  * directly.
  */
 function updateExchangeRates() {
@@ -138,9 +140,10 @@ function updateExchangeRates() {
     return;
   }
 
-  // Step 3: extract the economic-index rows from the combined CSV (pure --
-  // see src/domain/).
-  var extraction = extractEconomicIndexCsvRows(rawCsvRows);
+  // Step 3: convert every row of the combined CSV into the sheet's
+  // legacy row shape (pure -- see src/domain/). No series_type filtering
+  // happens here -- see buildValuesCsvRows for why.
+  var extraction = buildValuesCsvRows(rawCsvRows);
   console.log("Detected headers: [" + extraction.normalizedHeader.join(", ") + "]");
   if (!extraction.isComplete) {
     var missingColumnsMessage =
@@ -153,7 +156,7 @@ function updateExchangeRates() {
     console.warn(
       "Skipped " +
         extraction.skippedRowNumbers.length +
-        " row(s) with an unrecognized/incomplete series_type at line(s): " +
+        " malformed row(s) (too few columns) at line(s): " +
         extraction.skippedRowNumbers.join(", ")
     );
   }
@@ -161,8 +164,8 @@ function updateExchangeRates() {
   // Step 4: locate the VALUES sheet tab and upsert it (pure planning
   // logic shared via syncSheetTab -- see above).
   var spreadsheet = getActiveSpreadsheet(SpreadsheetApp);
-  var economicIndexSummary = syncSheetTab(spreadsheet, VALUES_SHEET_NAME, extraction.economicIndexCsvRows);
-  if (!economicIndexSummary) {
+  var valuesSummary = syncSheetTab(spreadsheet, VALUES_SHEET_NAME, extraction.valuesCsvRows);
+  if (!valuesSummary) {
     return;
   }
 
@@ -173,11 +176,11 @@ function updateExchangeRates() {
     "] " +
     VALUES_SHEET_NAME +
     " -> Updated: " +
-    economicIndexSummary.updatedCount +
+    valuesSummary.updatedCount +
     " | New: " +
-    economicIndexSummary.insertedCount +
+    valuesSummary.insertedCount +
     " | Untouched: " +
-    economicIndexSummary.untouchedCount;
+    valuesSummary.untouchedCount;
   console.log(summaryMessage);
   spreadsheet.toast(summaryMessage, "Synchronization Complete", 7);
 }
