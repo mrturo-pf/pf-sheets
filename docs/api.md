@@ -113,3 +113,86 @@ always returns a trimmed, upper-cased code -- both aliased and
 not-configured codes come out normalized this way, so the `VALUES` tab
 never ends up with inconsistent casing/whitespace regardless of how
 `pf-rates` sent it.
+
+## `GET_CLP(date, code)` (Web App custom function)
+
+Lets other Google Sheets (any document belonging to the same Google account that owns
+the central spreadsheet) look up a single value from the `VALUES` tab as a formula,
+without needing access to the spreadsheet itself. Served by a Web App deployment of
+this same `exchange-rates` project (`src/interfaces/webapp.js`'s `doGet`) -- see
+[`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
+for the deployment ID/URL and
+[`../plan-get-clp-webapp.md`](../plan-get-clp-webapp.md) for the full design rationale
+(including why this is a Web App and not an Apps Script Library -- custom functions
+cannot call `SpreadsheetApp.openById()`/`openByUrl()`, full stop, regardless of who
+owns what).
+
+**This is not code this repo pushes anywhere.** Unlike `updateExchangeRates`/`onOpen`
+(pushed via `clasp` to every target in `targets.json`), the snippet below is meant to be
+pasted manually, once, into each *consuming* Apps Script project -- those are separate
+Google Sheets this repo doesn't own or track as a clasp target. Reusing the multi-target
+push model here would push the entire sync macro (and a second, pointless `doGet`) into
+every consumer, none of which need it -- see "Adding a new document/target" in
+[`development.md`](development.md), which exists to scale `updateExchangeRates` to more
+documents needing the *same* full sync behavior, not this.
+
+### Install (once per consuming Apps Script project)
+
+1. Open the consuming spreadsheet's Extensions → Apps Script editor.
+2. Project Settings → Script Properties → add `GET_CLP_API_KEY` with the same value
+   configured on the `exchange-rates` project (ask whoever manages it -- it's the same
+   secret documented in [`getting-started.md`](getting-started.md)). Storing it in
+   Script Properties here too (rather than hardcoding it in the snippet below) keeps
+   the same "no secrets in source" rule this repo already follows for `PF_RATES_API_KEY`
+   and `EXPORT_DRIVE_FILE_ID`.
+3. Paste this into a new script file (e.g. `GetClp.gs`):
+
+   ```javascript
+   var GET_CLP_WEB_APP_URL =
+     "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec";
+
+   /**
+    * Looks up a CLP value from the shared financial-data spreadsheet.
+    * Usage: =GET_CLP(DATE(2026,9,15), "USD")
+    * @param {Date|string} date
+    * @param {string} code e.g. "USD", "EUR", "UF", "UTM", "IPC_CL"
+    * @return {number|string} the CLP value, or an error string
+    *   ("Unauthorized" / "Missing parameters" / "Not found") if it couldn't
+    *   be resolved -- never throws, so a bad lookup shows a clear message
+    *   in the cell instead of a broken formula.
+    * @customfunction
+    */
+   function GET_CLP(date, code) {
+     // Formatted using THIS spreadsheet's own time zone (getActiveSpreadsheet
+     // is fine here -- unlike doGet, a custom function genuinely does have
+     // an active bound spreadsheet, and this reconstructs "the calendar day
+     // the user actually typed into the cell", regardless of what time zone
+     // the central spreadsheet happens to use).
+     var dateParam =
+       date instanceof Date
+         ? Utilities.formatDate(date, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), "yyyy-MM-dd")
+         : String(date);
+
+     var apiKey = PropertiesService.getScriptProperties().getProperty("GET_CLP_API_KEY");
+     var url =
+       GET_CLP_WEB_APP_URL +
+       "?date=" + encodeURIComponent(dateParam) +
+       "&code=" + encodeURIComponent(code) +
+       "&key=" + encodeURIComponent(apiKey || "");
+
+     var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
+     var text = response.getContentText();
+     var value = parseFloat(text);
+     return isNaN(value) ? text : value;
+   }
+   ```
+
+4. Save. `=GET_CLP(DATE(2026,9,15), "USD")` should now work in any cell.
+
+### Why `UrlFetchApp`, not a Library call
+
+`URL Fetch` is one of the few services explicitly allowed, unrestricted, inside a
+custom function's sandbox -- see plan-get-clp-webapp.md's Fase 1.5. This is precisely
+what makes the Web App design work at all: `doGet` executes as a fully separate,
+unrestricted execution triggered by this HTTP call, not as part of this custom
+function's own restricted call stack.

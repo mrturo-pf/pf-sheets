@@ -176,15 +176,25 @@ la custom function que llama a `UrlFetchApp.fetch`):
 - 4 tests nuevos (77 en total), 100% statements/lines/functions, branches por encima
   del umbral en `domain/` e `infrastructure/`.
 
-### Fase 4 — Cliente `GET_CLP`
-- Función custom `@customfunction` definida directamente en cada proyecto consumidor
-  (sin Library de por medio): arma la URL, llama `UrlFetchApp.fetch` con la `key`,
-  parsea la respuesta.
-- Si el usuario controla las hojas consumidoras vía este repo: reutilizar el modelo
-  multi-target existente (`clasp-targets/<alias>.clasp.json` + `targets.json`), cero
-  código nuevo, solo config — mismo mecanismo que ya usa `updateExchangeRates`.
-- Si son equipos externos: documentar un snippet de instalación manual en
-  `docs/api.md` con la URL + placeholder de la key.
+### Fase 4 — Cliente `GET_CLP` (completada)
+- Snippet completo documentado en `docs/api.md`: función `@customfunction` que arma la
+  URL, llama `UrlFetchApp.fetch`, parsea la respuesta (número o string de error).
+- **Corrección respecto a la versión anterior de este plan:** el modelo multi-target
+  (`clasp-targets/` + `targets.json`) NO aplica acá — existe específicamente para
+  escalar `updateExchangeRates`/`onOpen` a N documentos que necesitan el mismo
+  comportamiento de sync completo (ver `docs/development.md`, "Adding a new
+  document/target"). Reusarlo para GET_CLP empujaría el macro completo (más un
+  segundo `doGet` sin sentido) a cada hoja consumidora, que no necesita nada de eso.
+  El snippet de GET_CLP no es código que este repo pushee a ningún lado — se pega a
+  mano, una vez, en cada proyecto de Apps Script consumidor (docs/api.md tiene el
+  runbook completo).
+- La clave `GET_CLP_API_KEY` se guarda también como Script Property en el proyecto
+  consumidor (no hardcodeada en el snippet), consistente con la regla de "sin secretos
+  en el código" que ya sigue el resto del repo.
+- Formateo de fecha con `SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()`
+  — a diferencia de `doGet`, una custom function sí tiene un spreadsheet activo válido
+  (es la hoja consumidora, no la central), y usar SU propio timezone reconstruye
+  correctamente "el día calendario que el usuario tipeó en la celda".
 
 ### Fase 5 — CI/CD (scope nuevo real)
 - Hoy el pipeline solo hace `clasp push` (`AGENTS.md`: "no versioned clasp deploy for
