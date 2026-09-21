@@ -20,6 +20,44 @@ var REQUIRED_CSV_COLUMNS = ["currency_code", "rate_date", "value_clp"];
 var REQUIRED_COMBINED_CSV_COLUMNS = ["series_type", "code", "period_date", "value"];
 
 /**
+ * Cache of Intl.DateTimeFormat instances keyed by IANA time zone.
+ * Constructing a formatter is expensive relative to using one, and
+ * normalizeDateKey is called extremely often -- once per existing sheet
+ * row while indexing, plus twice per comparison while sorting the full
+ * sheet (see computeUpsertPlan). At small row counts a fresh formatter
+ * per call went unnoticed; at ~30k rows the sort alone drives hundreds
+ * of thousands of comparisons, and allocating a new Intl.DateTimeFormat
+ * on every single one of them was enough to exhaust Apps Script's V8
+ * runtime memory ("Out of memory error") -- there is only ever one
+ * timeZone per sync run, so memoizing by that key is sufficient here.
+ * @type {Map<string, Intl.DateTimeFormat>}
+ */
+var dateFormattersByTimeZone = new Map();
+
+/**
+ * Returns a memoized "en-CA" (YYYY-MM-DD) Intl.DateTimeFormat for the
+ * given IANA time zone, creating and caching one on first use.
+ * @param {string} timeZone e.g. "America/Santiago"
+ * @returns {Intl.DateTimeFormat}
+ */
+function getDateFormatter(timeZone) {
+  var cached = dateFormattersByTimeZone.get(timeZone);
+  if (cached) {
+    return cached;
+  }
+  // "en-CA" formats as YYYY-MM-DD by locale convention — no manual
+  // string surgery needed, and it respects the given IANA time zone.
+  var formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  dateFormattersByTimeZone.set(timeZone, formatter);
+  return formatter;
+}
+
+/**
  * Normalizes any date representation (a real Date, or a CSV/sheet string)
  * into a "YYYY-MM-DD" key. Real Dates are formatted using `timeZone` so the
  * same instant always normalizes to the same calendar day regardless of
@@ -34,15 +72,7 @@ function normalizeDateKey(rawDate, timeZone) {
     return "";
   }
   if (rawDate instanceof Date) {
-    // "en-CA" formats as YYYY-MM-DD by locale convention — no manual
-    // string surgery needed, and it respects the given IANA time zone.
-    var formatter = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    return formatter.format(rawDate);
+    return getDateFormatter(timeZone).format(rawDate);
   }
   return String(rawDate).trim().substring(0, 10);
 }
