@@ -16,7 +16,8 @@ the combined export instead of exchange rates directly.
 2. Reads the resulting CSV from Google Drive (`EXPORT_DRIVE_FILE_ID` Script Property).
 3. Extracts the `ECONOMIC_INDEX` rows out of the CSV, converted to a
    legacy-shaped row set (pure, see `extractEconomicIndexCsvRows` in
-   `src/domain/`).
+   `src/domain/`). Each row's `code` is passed through
+   `applySheetCodeAlias` on the way -- see "Code aliases" below.
 4. Performs an incremental upsert into the `VALUES` sheet tab,
    each keyed by `CODE|YYYY-MM-DD`:
    - Updates `value` + `last_modified_at` when the value changed.
@@ -50,3 +51,26 @@ are skipped and their line numbers logged, same "skip and count" behavior
 
 See [`pf-rates/docs/api.md`](../../pf-rates/docs/api.md) for the authoritative contract
 of the export endpoint.
+
+## Code aliases
+
+pf-rates emits `code` values from its own domain (`USD`, `EUR`, `UF`, `UTM`,
+`IPC_CL`, ...) -- that's the contract every consumer shares, and it does not
+change here. But this specific spreadsheet wants some of those codes
+displayed under a different label; today `UF` is written to the `VALUES`
+tab as `CLF` instead.
+
+This is a **presentation-only relabeling local to `pf-sheets`**: `pf-rates`,
+`pf-db`, and any other consumer of the combined export keep seeing/storing
+`UF` exactly as before. The mapping lives in one place,
+`SHEET_CODE_ALIASES` in `src/domain/index.js`, and is applied by
+`applySheetCodeAlias` right where `extractEconomicIndexCsvRows` builds each
+row -- nowhere else needs to know about it.
+
+**To rename another code later** (e.g. show `UTM` as something else), add
+one more `key: "value"` entry to `SHEET_CODE_ALIASES` and redeploy -- no
+other file changes. Keys are matched case-insensitively; `applySheetCodeAlias`
+always returns a trimmed, upper-cased code -- both aliased and
+not-configured codes come out normalized this way, so the `VALUES` tab
+never ends up with inconsistent casing/whitespace regardless of how
+`pf-rates` sent it.

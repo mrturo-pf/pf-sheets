@@ -222,6 +222,43 @@ function resolveCombinedCsvColumns(headerRow) {
 }
 
 /**
+ * Renames specific codes as they get written into the VALUES sheet tab --
+ * a presentation-only relabeling local to this spreadsheet. pf-rates'
+ * own contract, pf-db's schema, and every other consumer of the combined
+ * export are completely unaffected; only what a human sees in this one
+ * Sheet changes.
+ *
+ * To rename another code later (e.g. UTM), add one more entry here --
+ * nothing else in this file, `interfaces/`, or `infrastructure/` needs to
+ * change. Keys are matched case-insensitively (see applySheetCodeAlias);
+ * values are used verbatim.
+ *
+ * A Script-Properties-driven mapping (editable without a redeploy) was
+ * considered and rejected for now -- YAGNI while it's a handful of known,
+ * rarely-changing codes; revisit only if this ever needs to be edited by
+ * someone without repo/CI access.
+ */
+var SHEET_CODE_ALIASES = {
+  UF: "CLF",
+};
+
+/**
+ * Looks up `rawCode` in SHEET_CODE_ALIASES, case-insensitively, and
+ * always returns a trimmed, upper-cased code -- whether or not an alias
+ * matched. This is the single place that decides the exact string that
+ * ends up written to the VALUES sheet, so normalization lives here
+ * instead of being an incidental side effect of a later pipeline stage.
+ * @param {*} rawCode
+ * @returns {string}
+ */
+function applySheetCodeAlias(rawCode) {
+  var normalizedCode = String(rawCode).trim().toUpperCase();
+  return Object.prototype.hasOwnProperty.call(SHEET_CODE_ALIASES, normalizedCode)
+    ? SHEET_CODE_ALIASES[normalizedCode]
+    : normalizedCode;
+}
+
+/**
  * Extracts the ECON_INDEX rows out of a combined pf-rates export CSV
  * (series_type,code,period_date,value), converting them to the
  * legacy-shaped rows (currency_code,rate_date,value_clp) that the existing
@@ -266,7 +303,7 @@ function extractEconomicIndexCsvRows(combinedCsvRows) {
     var seriesType = String(row[columns.seriesType]).trim().toUpperCase();
 
     if (seriesType === SERIES_TYPE_ECONOMIC_INDEX) {
-      economicIndexCsvRows.push([row[columns.code], row[columns.date], row[columns.value]]);
+      economicIndexCsvRows.push([applySheetCodeAlias(row[columns.code]), row[columns.date], row[columns.value]]);
     } else if (seriesType !== SERIES_TYPE_EXCHANGE_RATE) {
       skippedRowNumbers.push(i + 1);
     }
@@ -289,6 +326,7 @@ if (typeof module !== "undefined") {
     buildRegistryIndex: buildRegistryIndex,
     computeUpsertPlan: computeUpsertPlan,
     resolveCombinedCsvColumns: resolveCombinedCsvColumns,
+    applySheetCodeAlias: applySheetCodeAlias,
     extractEconomicIndexCsvRows: extractEconomicIndexCsvRows,
   };
 }

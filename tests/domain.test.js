@@ -6,6 +6,7 @@ const {
   buildRegistryIndex,
   computeUpsertPlan,
   resolveCombinedCsvColumns,
+  applySheetCodeAlias,
   extractEconomicIndexCsvRows,
 } = require("../src/domain");
 
@@ -241,7 +242,56 @@ describe("resolveCombinedCsvColumns", () => {
   });
 });
 
+describe("applySheetCodeAlias", () => {
+  it("renames UF to CLF", () => {
+    expect(applySheetCodeAlias("UF")).toBe("CLF");
+  });
+
+  it("is case-insensitive when matching the configured alias", () => {
+    expect(applySheetCodeAlias("uf")).toBe("CLF");
+    expect(applySheetCodeAlias(" Uf ")).toBe("CLF");
+  });
+
+  it("passes codes with no configured alias through, but still trimmed and upper-cased", () => {
+    expect(applySheetCodeAlias("IPC_CL")).toBe("IPC_CL");
+    expect(applySheetCodeAlias(" ipc_cl ")).toBe("IPC_CL");
+    expect(applySheetCodeAlias("utm")).toBe("UTM");
+  });
+});
+
 describe("extractEconomicIndexCsvRows", () => {
+  it("applies the configured code alias (UF -> CLF) while leaving other codes untouched", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["ECONOMIC_INDEX", "UF", "2026-01-14", "38000.12"],
+      ["ECONOMIC_INDEX", "IPC_CL", "2026-01-14", "125.5"],
+    ];
+
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
+
+    expect(result.economicIndexCsvRows).toEqual([
+      ["currency_code", "rate_date", "value_clp"],
+      ["CLF", "2026-01-14", "38000.12"],
+      ["IPC_CL", "2026-01-14", "125.5"],
+    ]);
+  });
+
+  it("trims and upper-cases every code, aliased or not, regardless of how pf-rates sent it", () => {
+    const combinedCsvRows = [
+      ["series_type", "code", "period_date", "value"],
+      ["ECONOMIC_INDEX", " uf ", "2026-01-14", "38000.12"],
+      ["ECONOMIC_INDEX", "ipc_cl", "2026-01-14", "125.5"],
+    ];
+
+    const result = extractEconomicIndexCsvRows(combinedCsvRows);
+
+    expect(result.economicIndexCsvRows).toEqual([
+      ["currency_code", "rate_date", "value_clp"],
+      ["CLF", "2026-01-14", "38000.12"],
+      ["IPC_CL", "2026-01-14", "125.5"],
+    ]);
+  });
+
   it("extracts ECONOMIC_INDEX rows into a legacy-shaped CSV, dropping EXCHANGE_RATE rows without flagging them as skipped", () => {
     const combinedCsvRows = [
       ["series_type", "code", "period_date", "value"],
