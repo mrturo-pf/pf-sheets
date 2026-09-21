@@ -146,6 +146,43 @@ function createSheetRowAccessor(sheet) {
   };
 }
 
+// CacheService's own hard cap on TTL (6 hours) -- see
+// https://developers.google.com/apps-script/reference/cache/cache#putkey,-value,-expirationinseconds
+var GET_CLP_CACHE_TTL_SECONDS = 21600;
+
+/**
+ * Reads a previously cached GET_CLP value for a (code, date) cache key,
+ * or null on a cache miss. Only successful lookups are ever cached (see
+ * cacheRateValue) -- "not found" results are deliberately never cached,
+ * since those are exactly the ones likely to change soon (a value not
+ * synced yet), and a stale negative could mask a sync that already
+ * happened for up to 6 hours.
+ * @param {GoogleAppsScript.Cache.CacheService} cacheService
+ * @param {string} cacheKey e.g. "USD|2026-01-15"
+ * @returns {number|null}
+ */
+function getCachedRateValue(cacheService, cacheKey) {
+  var cached = cacheService.getScriptCache().get(cacheKey);
+  if (cached === null) {
+    return null;
+  }
+  var value = parseFloat(cached);
+  return isNaN(value) ? null : value;
+}
+
+/**
+ * Caches a successful GET_CLP lookup for up to 6 hours (CacheService's
+ * own maximum) so repeated queries for the same (code, date) -- likely
+ * across many consumer sheets hitting this one Web App -- don't re-touch
+ * the Sheet.
+ * @param {GoogleAppsScript.Cache.CacheService} cacheService
+ * @param {string} cacheKey
+ * @param {number} value
+ */
+function cacheRateValue(cacheService, cacheKey, value) {
+  cacheService.getScriptCache().put(cacheKey, String(value), GET_CLP_CACHE_TTL_SECONDS);
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     getConfig: getConfig,
@@ -157,5 +194,7 @@ if (typeof module !== "undefined") {
     showAlert: showAlert,
     getGetClpApiKey: getGetClpApiKey,
     createSheetRowAccessor: createSheetRowAccessor,
+    getCachedRateValue: getCachedRateValue,
+    cacheRateValue: cacheRateValue,
   };
 }

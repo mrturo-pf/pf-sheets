@@ -14,13 +14,13 @@
  *
  * Like `interfaces/index.js`, this is one of the few files allowed to
  * reference bare Apps Script globals (SpreadsheetApp, PropertiesService,
- * ContentService) directly, and calls domain/infrastructure functions by
- * bare name relying on Apps Script's single flat concatenated scope (see
- * AGENTS.md). Not unit-tested here for the same reason `index.js` isn't:
- * faking every global involved for a handful of branches has little
- * signal over running it end-to-end against the real deployment --
- * `domain/` and `infrastructure/` carry the real test coverage this
- * delegates to.
+ * ContentService, CacheService) directly, and calls domain/infrastructure
+ * functions by bare name relying on Apps Script's single flat
+ * concatenated scope (see AGENTS.md). Not unit-tested here for the same
+ * reason `index.js` isn't: faking every global involved for a handful of
+ * branches has little signal over running it end-to-end against the real
+ * deployment -- `domain/` and `infrastructure/` carry the real test
+ * coverage this delegates to.
  */
 
 // The central spreadsheet this container-bound project already lives in
@@ -64,6 +64,22 @@ function doGet(e) {
   }
 
   var spreadsheet = SpreadsheetApp.openById(GET_CLP_SPREADSHEET_ID);
+  var timeZone = spreadsheet.getSpreadsheetTimeZone();
+
+  // Normalize once, up front, so the cache key is stable regardless of
+  // input casing/whitespace/alias ("uf" and "UF" -- stored as "CLF" --
+  // must hit the same cache entry). findRateValue re-applies both
+  // normalizations internally, but they're idempotent, so passing
+  // already-normalized values through it again is a no-op, not a bug.
+  var normalizedCode = applySheetCodeAlias(params.code);
+  var normalizedDate = normalizeDateKey(params.date, timeZone);
+  var cacheKey = normalizedCode + "|" + normalizedDate;
+
+  var cachedValue = getCachedRateValue(CacheService, cacheKey);
+  if (cachedValue !== null) {
+    return respondPlainText(String(cachedValue));
+  }
+
   var sheet = spreadsheet.getSheetByName(VALUES_SHEET_NAME);
   if (!sheet) {
     console.error('Sheet tab "' + VALUES_SHEET_NAME + '" was not found in the central spreadsheet.');
@@ -71,11 +87,12 @@ function doGet(e) {
   }
 
   var accessor = createSheetRowAccessor(sheet);
-  var value = findRateValue(accessor, params.code, params.date, spreadsheet.getSpreadsheetTimeZone());
+  var value = findRateValue(accessor, normalizedCode, normalizedDate, timeZone);
   if (value === null) {
     return respondPlainText("Not found");
   }
 
+  cacheRateValue(CacheService, cacheKey, value);
   return respondPlainText(String(value));
 }
 

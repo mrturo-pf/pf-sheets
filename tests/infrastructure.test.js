@@ -8,6 +8,8 @@ const {
   showAlert,
   getGetClpApiKey,
   createSheetRowAccessor,
+  getCachedRateValue,
+  cacheRateValue,
 } = require("../src/infrastructure");
 
 describe("getConfig", () => {
@@ -200,5 +202,44 @@ describe("createSheetRowAccessor", () => {
 
     expect(getRangeCalls).toEqual([[4, 1, 1, 5]]);
     expect(row).toEqual([3, "USD", "2026-01-16", 860, "ts"]);
+  });
+});
+
+describe("getCachedRateValue / cacheRateValue", () => {
+  function createFakeCacheService() {
+    const store = {};
+    return {
+      store,
+      getScriptCache: () => ({
+        get: (key) => (Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null),
+        put: (key, value, ttlSeconds) => {
+          store[key] = value;
+          store[key + ":ttl"] = ttlSeconds;
+        },
+      }),
+    };
+  }
+
+  it("returns null on a cache miss", () => {
+    const fakeCacheService = createFakeCacheService();
+    expect(getCachedRateValue(fakeCacheService, "USD|2026-01-15")).toBeNull();
+  });
+
+  it("caches a value and reads it back as a number", () => {
+    const fakeCacheService = createFakeCacheService();
+    cacheRateValue(fakeCacheService, "USD|2026-01-15", 957.53);
+    expect(getCachedRateValue(fakeCacheService, "USD|2026-01-15")).toBe(957.53);
+  });
+
+  it("caches with a 21600-second (6h) TTL -- CacheService's own maximum", () => {
+    const fakeCacheService = createFakeCacheService();
+    cacheRateValue(fakeCacheService, "USD|2026-01-15", 957.53);
+    expect(fakeCacheService.store["USD|2026-01-15:ttl"]).toBe(21600);
+  });
+
+  it("returns null if the cached entry is somehow non-numeric", () => {
+    const fakeCacheService = createFakeCacheService();
+    fakeCacheService.store["USD|2026-01-15"] = "not-a-number";
+    expect(getCachedRateValue(fakeCacheService, "USD|2026-01-15")).toBeNull();
   });
 });

@@ -159,11 +159,22 @@ la custom function que llama a `UrlFetchApp.fetch`):
 - 73/73 tests en el repo, 100% statements/lines/functions y branches por encima del
   90% exigido en `domain/` e `infrastructure/`.
 
-### Fase 3 — Cacheo (complementario, barato)
-- `CacheService.getScriptCache()` por clave `code|date` (TTL 6h, el máximo permitido)
-  para no re-tocar el Sheet en consultas repetidas dentro de la ventana. A diferencia
-  del intento con Library, acá no hay problema de sandbox — `doGet` puede usar
-  cualquier servicio sin restricciones.
+### Fase 3 — Cacheo (completada)
+- `getCachedRateValue` / `cacheRateValue` en `infrastructure/`, sobre
+  `CacheService.getScriptCache()`, TTL 21600s (6h, el máximo permitido).
+- Clave `code|date` construida con el código/fecha ya normalizados (`applySheetCodeAlias`
+  + `normalizeDateKey`) para que `"uf"`, `"UF"` y `"CLF"` compartan la misma entrada de
+  caché.
+- **Decisión deliberada: solo se cachean resultados positivos.** Un "Not found" nunca se
+  cachea — es justo el caso con mayor probabilidad de cambiar pronto (un valor que
+  todavía no sincronizó `updateExchangeRates()`), y cachear un negativo por hasta 6h
+  podría esconder una sincronización recién hecha.
+- `doGet` chequea el caché **antes** de abrir la hoja `VALUES` (aunque `openById` +
+  `getSpreadsheetTimeZone()` siguen ejecutándose siempre — son lecturas de metadata
+  baratas, no tocan datos; lo que se evita en un cache hit es el rango de lecturas caras
+  de `createSheetRowAccessor`).
+- 4 tests nuevos (77 en total), 100% statements/lines/functions, branches por encima
+  del umbral en `domain/` e `infrastructure/`.
 
 ### Fase 4 — Cliente `GET_CLP`
 - Función custom `@customfunction` definida directamente en cada proyecto consumidor
