@@ -192,10 +192,13 @@ documents needing the *same* full sync behavior, not this.
     * Usage: =GET_CLP(DATE(2026,9,15), "USD")
     * @param {Date|string} date
     * @param {string} code e.g. "USD", "EUR", "UF", "UTM", "IPC_CL"
-    * @return {number|string} the CLP value, or an error string
-    *   ("Unauthorized" / "Missing parameters" / "Not found") if it couldn't
-    *   be resolved -- never throws, so a bad lookup shows a clear message
-    *   in the cell instead of a broken formula.
+    * @return {number|string} the CLP value, or the string "Unauthorized" /
+    *   "Missing parameters" for real misconfigurations (returned as plain
+    *   text on purpose -- see the "GOOGLEFINANCE fallback" section below
+    *   for why these must NOT be silently swallowed by IFERROR).
+    * @throws {Error} "Not found" when there's no data for that (code, date)
+    *   yet -- thrown, not returned, specifically so
+    *   IFERROR(GET_CLP(...), ...) can catch just this one recoverable case.
     * @customfunction
     */
    function GET_CLP(date, code) {
@@ -219,11 +222,53 @@ documents needing the *same* full sync behavior, not this.
      var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
      var text = response.getContentText();
      var value = parseFloat(text);
-     return isNaN(value) ? text : value;
+
+     if (!isNaN(value)) {
+       return value;
+     }
+
+     if (text === "Not found") {
+       // The ONE case worth recovering from at the formula level -- thrown
+       // (not returned as a string) so IFERROR(GET_CLP(...), ...) below
+       // can catch it. "Unauthorized"/"Missing parameters" fall through to
+       // `return text` instead: those are real misconfigurations, not
+       // "no data yet", and must stay visibly loud in the cell rather than
+       // being silently masked by a GOOGLEFINANCE fallback that could show
+       // a plausible-but-wrong number over a broken API key.
+       throw new Error("Not found");
+     }
+     return text;
    }
    ```
 
 4. Save. `=GET_CLP(DATE(2026,9,15), "USD")` should now work in any cell.
+
+### GOOGLEFINANCE fallback + `#N/A` (optional, per-cell)
+
+`GET_CLP` itself cannot call `GOOGLEFINANCE` or any other formula internally -- same
+platform restriction as the Library dead end (custom functions are read-only, cannot
+write a formula to a cell to evaluate it). The fallback has to be composed in the
+consuming **cell**, using `GET_CLP`'s `"Not found"` throw (added above) so `IFERROR`
+has something real to catch:
+
+```
+=IFERROR(IFERROR(GET_CLP(date, code), INDEX(GOOGLEFINANCE("CURRENCY:" & code & "CLP", "price", date, date), 2, 2)), NA())
+```
+
+Why it looks like this, not simpler:
+- `GOOGLEFINANCE("CURRENCY:" & code & "CLP", ...)` -- FX pairs need the `CURRENCY:` prefix
+  plus the concatenated pair (e.g. `CURRENCY:USDCLP`); the bare code (`"USD"`) is not a
+  valid symbol.
+- `INDEX(..., 2, 2)` -- `GOOGLEFINANCE` with a historical date **always** returns a
+  2-row table (a `Date`/`Close` header row plus one data row), never a bare number, even
+  for a single day (`start_date = end_date`). `INDEX` pulls out just the price cell.
+- Outer `NA()` -- the final, explicit `#N/A` when neither source has a value.
+
+**This fallback only makes sense for real currency codes** (`USD`, `EUR`, ...).
+`GOOGLEFINANCE` has no data for `UF`, `UTM`, or `IPC_CL` -- those are Chile-specific
+indices (BCCh/INE), not tradeable instruments on public markets. For those codes the
+`GOOGLEFINANCE(...)` branch will itself error out on an invalid symbol and the formula
+correctly falls through to `NA()` -- this is expected, not a bug to chase.
 
 ### Why `UrlFetchApp`, not a Library call
 
