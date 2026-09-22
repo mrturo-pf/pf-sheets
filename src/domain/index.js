@@ -480,6 +480,34 @@ function findRateValue(accessor, rawCode, rawDate, timeZone) {
   return null;
 }
 
+/**
+ * Batch counterpart to findRateValue, for GET_CLP_RANGE (see
+ * plan-get-clp-02-range-batch.md) -- resolves every (code, date) pair
+ * against the same accessor/timeZone in one call. Reuses findRateValue
+ * per pair: each pair is still its own independent O(log n) binary
+ * search, since the real perf win of batching comes from amortizing ONE
+ * HTTP round trip + doPost invocation over N pairs, not from a smarter
+ * search algorithm.
+ *
+ * A malformed pair (null/undefined, or missing code/date) resolves to
+ * null at its own position, same as findRateValue does for a single
+ * missing code/date -- one bad pair never throws or shifts positions, so
+ * the caller can always zip `pairs` and the returned array back together
+ * 1:1 by index.
+ * @param {RowAccessor} accessor
+ * @param {Array<{code: *, date: *}>} pairs
+ * @param {string} timeZone e.g. "America/Santiago"
+ * @returns {Array<number|null>} same length and order as `pairs`
+ */
+function findRateValues(accessor, pairs, timeZone) {
+  return pairs.map(function (pair) {
+    if (!pair) {
+      return null;
+    }
+    return findRateValue(accessor, pair.code, pair.date, timeZone);
+  });
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normalizeDateKey: normalizeDateKey,
@@ -495,5 +523,6 @@ if (typeof module !== "undefined") {
     createArrayRowAccessor: createArrayRowAccessor,
     findFirstRowIndexAtOrAfterDate: findFirstRowIndexAtOrAfterDate,
     findRateValue: findRateValue,
+    findRateValues: findRateValues,
   };
 }

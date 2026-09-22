@@ -12,6 +12,7 @@ const {
   createArrayRowAccessor,
   findFirstRowIndexAtOrAfterDate,
   findRateValue,
+  findRateValues,
 } = require("../src/domain");
 
 const TZ = "America/Santiago";
@@ -542,5 +543,48 @@ describe("findRateValue", () => {
     // 50ms leaves generous headroom for slow CI runners while still failing
     // hard if this regresses back to an O(n) scan.
     expect(elapsedMs).toBeLessThan(50);
+  });
+});
+
+describe("findRateValues", () => {
+  const accessor = createArrayRowAccessor(SORTED_FIXTURE_ROWS);
+
+  it("resolves multiple pairs in order, same as calling findRateValue individually", () => {
+    const pairs = [
+      { code: "EUR", date: "2026-01-10" },
+      { code: "USD", date: "2026-01-15" },
+      { code: "UTM", date: "2026-01-13" },
+    ];
+    expect(findRateValues(accessor, pairs, TZ)).toEqual([900, 865, 65000]);
+  });
+
+  it("resolves an alias code the same way findRateValue does", () => {
+    expect(findRateValues(accessor, [{ code: "UF", date: "2026-01-13" }], TZ)).toEqual([36000]);
+  });
+
+  it("returns null at the position of a pair with no match, without affecting other positions", () => {
+    const pairs = [
+      { code: "EUR", date: "2026-01-10" },
+      { code: "USD", date: "2026-01-01" }, // before the first row -- no match
+      { code: "UTM", date: "2026-01-13" },
+    ];
+    expect(findRateValues(accessor, pairs, TZ)).toEqual([900, null, 65000]);
+  });
+
+  it("returns null for a malformed pair (null/undefined) without throwing or shifting positions", () => {
+    const pairs = [{ code: "EUR", date: "2026-01-10" }, null, undefined, { code: "USD", date: "2026-01-15" }];
+    expect(findRateValues(accessor, pairs, TZ)).toEqual([900, null, null, 865]);
+  });
+
+  it("returns null for a pair missing code or date", () => {
+    const pairs = [
+      { code: "", date: "2026-01-10" },
+      { code: "EUR", date: "" },
+    ];
+    expect(findRateValues(accessor, pairs, TZ)).toEqual([null, null]);
+  });
+
+  it("returns an empty array for an empty batch", () => {
+    expect(findRateValues(accessor, [], TZ)).toEqual([]);
   });
 });
