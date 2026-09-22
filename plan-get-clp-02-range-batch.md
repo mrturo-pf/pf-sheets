@@ -1,9 +1,13 @@
 # Plan: `GET_CLP_RANGE` — lookup por lote para reducir llamadas HTTP concurrentes
 
-> **Estado: PENDIENTE.** Diagnóstico y diseño documentados más abajo; implementación
-> no iniciada todavía. Es la continuación de
+> **Estado: EN PROGRESO.** El diagnóstico y diseño de más abajo ya están confirmados.
+> La función de dominio en lote (`findRateValues`), el endpoint `doPost` del Web App, y
+> el snippet cliente `GET_CLP_RANGE` **ya están implementados y con tests en verde** --
+> ver "Progreso" más abajo. Lo que falta es exclusivamente el redeploy real + la
+> migración de las celdas de "(05) Payroll", que requieren acceso a esas hojas concretas
+> (fuera del alcance de este repo/sesión de código). Es la continuación de
 > [`plan-get-clp-01-webapp.md`](plan-get-clp-01-webapp.md) (ese plan ya está
-> completo y en producción) — este documento cubre el problema de escala detectado
+> completo y en producción) -- este documento cubre el problema de escala detectado
 > después del lanzamiento.
 >
 > **`GET_CLP` NO se elimina ni se deprecia con este plan.** `GET_CLP_RANGE` es una
@@ -12,8 +16,48 @@
 > puede seguir usando `GET_CLP` para lookups individuales, incluso después de que
 > `GET_CLP_RANGE` exista.
 
-Plan de acción para la próxima sesión — **no implementar todavía**, solo dejar
-registrado el diagnóstico y el rumbo propuesto para no perder contexto.
+Plan de acción para la próxima sesión -- **implementación de código ya hecha**, falta
+solo el redeploy + la migración real en las hojas consumidoras (fuera de este repo).
+
+## Progreso (esta sesión)
+
+- **`findRateValues(accessor, pairs, timeZone)`** agregada en `src/domain/index.js` --
+  pura, reutiliza `findRateValue` por par (la ganancia real es amortizar el round-trip
+  HTTP entre todos los pares, no cambiar el algoritmo de búsqueda -- ver "Piezas a
+  diseñar" punto 2 más abajo, ya resuelto así). Un par malformado (`null`/`undefined`,
+  o sin `code`/`date`) resuelve a `null` en su propia posición sin tirar abajo el resto
+  del lote -- 6 tests nuevos, 100% cobertura.
+- **`doPost(e)`** agregado en `src/interfaces/webapp.js` -- mismo query param `key` que
+  `doGet` (el body JSON solo lleva los pares, ver "Piezas a diseñar" punto 1), valida
+  tamaño de lote (`GET_CLP_RANGE_MAX_PAIRS = 500`, punto 5), cachea por par con el mismo
+  esquema `code|date` que `doGet` (punto 4) antes de tocar el `RowAccessor`, y responde
+  un array JSON con número o string de error por posición -- nunca falla el lote entero
+  por un solo par (punto 3). No testeado directamente, mismo criterio ya establecido
+  para `doGet` (smoke test en `tests/interfaces.test.js`).
+- **Snippet cliente `GET_CLP_RANGE`** documentado en `docs/api.md` -- recibe dos rangos
+  (fechas, códigos), arma el payload, hace `POST` con el mismo backoff/presupuesto de
+  tiempo que ya usa `GET_CLP`, y devuelve un array 2D para que Sheets lo derrame en
+  columna. No es código que este repo pushee (mismo criterio que el snippet de
+  `GET_CLP`, ver Fase 4 de `plan-get-clp-01-webapp.md`).
+- **86/86 tests en el repo** (80 + 6 nuevos), lint limpio, cobertura 100% líneas/statements/
+  funciones y por encima del umbral en branches, en `domain/` e `infrastructure/`.
+- **CI/CD:** sin cambios -- confirmado, `push-target.sh` ya corre `clasp deploy -i <id>`
+  después de todo `clasp push` para el target `exchange-rates` (ver Fase 5 de
+  `plan-get-clp-01-webapp.md`), así que el próximo merge a `main` despliega `doPost`
+  automáticamente sin tocar el pipeline.
+
+## Qué falta (requiere acceso a las hojas reales, fuera de esta sesión)
+
+1. Confirmar el layout exacto de las 2 columnas en "(05) Payroll" antes de pegar el
+   snippet ahí (aunque la firma `GET_CLP_RANGE(dates, codes)` ya está fijada y no
+   depende de ese detalle para funcionar).
+2. Pegar el snippet actualizado (`GET_CLP.gs`, con `GET_CLP_RANGE` agregada) en los
+   proyectos Apps Script de "(05) Payroll" y, si corresponde, "(12) MedicalRefund".
+3. Migrar solo las dos columnas de Payroll afectadas por la ráfaga de `GET_CLP` celda a
+   celda hacia `GET_CLP_RANGE` -- el resto de cualquier hoja sigue pudiendo usar
+   `GET_CLP` sin cambios.
+4. Validar en producción con el volumen real (108 celdas) que ya no aparece
+   `"Unexpected response"` ni demoras de 30+ segundos.
 
 ## Problema real observado (no hipotético)
 
@@ -80,23 +124,25 @@ Uso previsto en la hoja:
 ```
 en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
 
-### Piezas a diseñar (pendiente, próxima sesión)
+### Piezas de diseño (implementadas)
 
 1. **Nuevo endpoint del Web App** (`doPost`, no `doGet`): un `GET` con 54+ pares
    fecha/código codificados en query params casi seguro pisa el límite de longitud
-   de URL. Necesita un body JSON con la lista de pares.
+   de URL. **Implementado** con un body JSON con la lista de pares --
+   `src/interfaces/webapp.js`.
 2. **Nueva función de dominio** para resolver un lote de pares en una sola pasada
    sobre el `RowAccessor` (reusar `findRateValue` por par es aceptable para arrancar
    — la ganancia real viene de amortizar el round-trip HTTP y el overhead de
    invocación de `doGet`/`doPost` entre TODOS los pares, no de cambiar el algoritmo
-   de búsqueda en sí).
+   de búsqueda en sí). **Implementado**: `findRateValues` en `src/domain/index.js`.
 3. **Manejo de errores por fila**: un `"Not found"` en una fila no puede tirar abajo
    el lote completo — cada posición del array de salida necesita poder ser
-   número o mensaje de error de forma independiente.
+   número o mensaje de error de forma independiente. **Implementado** en `doPost`.
 4. **Caché**: seguir cacheando por `code|date` individual (clave ya usada hoy) para
    que corridas parciales/repetidas sigan beneficiándose del `CacheService` existente.
-5. **Límite de tamaño de lote**: definir un máximo razonable de pares por request
-   (a determinar según límites reales de tamaño de payload de Apps Script).
+   **Implementado**, mismo esquema de clave que `doGet`.
+5. **Límite de tamaño de lote**: definir un máximo razonable de pares por request.
+   **Implementado**: `GET_CLP_RANGE_MAX_PAIRS = 500`.
 6. **¿Se mantiene `GET_CLP` de celda única?** Sí — no todos los consumidores
    necesitan lookup masivo (ver Fase 4 del plan original,
    `plan-get-clp-01-webapp.md`: el criterio ya establecido es no imponerle a un
@@ -105,9 +151,11 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
 7. **Testing**: la función de dominio que resuelve el lote debe vivir en `domain/`
    (pura, testeable, mismo estándar de cobertura ya exigido). El `doPost`/wrapper de
    Apps Script sigue el mismo criterio ya establecido para `doGet`/`index.js`: no
-   testeado directamente, cubierto por smoke test mínimo.
+   testeado directamente, cubierto por smoke test mínimo. **Implementado**: 6 tests
+   nuevos para `findRateValues`, smoke test actualizado para `doPost`.
 8. **CI/CD**: sin cambios de infraestructura esperados — mismo pipeline, mismo
-   `clasp push` + `clasp deploy -i <id>` ya en `push-target.sh`.
+   `clasp push` + `clasp deploy -i <id>` ya en `push-target.sh`. **Confirmado sin
+   cambios necesarios.**
 
 ### Qué NO se va a tocar
 
@@ -124,18 +172,6 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
 
 ## Próximos pasos al retomar
 
-1. Confirmar el layout exacto de las 2 columnas en "(05) Payroll" (qué contiene cada
-   una, si son realmente fecha+código por fila) para diseñar la firma de
-   `GET_CLP_RANGE` con precisión.
-2. Decidir el formato de payload del `doPost` (JSON array de `{date, code}`).
-3. Implementar la función de dominio del lote + tests.
-4. Implementar `doPost` en `interfaces/webapp.js`.
-5. Implementar `GET_CLP_RANGE` en el snippet cliente (`docs/api.md` + push a
-   Payroll/MedicalRefund vía `clasp`, mismo procedimiento pull-then-push ya usado).
-6. Migrar la hoja de Payroll de `GET_CLP` por celda a `GET_CLP_RANGE` **solo en las
-   dos columnas afectadas por la ráfaga** (el caso que motiva este plan) — esto NO
-   es deprecar `GET_CLP`: sigue disponible y soportado para cualquier otra celda,
-   hoja o consumidor (incluida la propia Payroll, si en el futuro necesita un
-   lookup suelto en otro lado del libro).
-7. Validar en producción con el volumen real (108 celdas) que ya no aparece
-   `"Unexpected response"` ni demoras de 30+ segundos.
+Ver "Qué falta" al comienzo de este documento -- son los mismos 4 puntos, todos
+condicionados a tener acceso directo a las hojas "(05) Payroll"/"(12) MedicalRefund",
+no a más trabajo de código en este repo.

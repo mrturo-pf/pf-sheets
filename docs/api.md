@@ -347,3 +347,177 @@ custom function's sandbox -- see plan-get-clp-01-webapp.md's Fase 1.5. This is p
 what makes the Web App design work at all: `doGet` executes as a fully separate,
 unrestricted execution triggered by this HTTP call, not as part of this custom
 function's own restricted call stack.
+
+## `GET_CLP_RANGE(dates, codes)` (Web App custom function, batch)
+
+Batch counterpart to `GET_CLP`, for many cells recalculating together -- see
+[`../plan-get-clp-02-range-batch.md`](../plan-get-clp-02-range-batch.md) for the full
+diagnosis (a burst of 108+ separate `GET_CLP` calls in "(05) Payroll" competing for the
+same Web App/central sheet under load). **`GET_CLP` is not deprecated or replaced by
+this** -- both formulas coexist indefinitely; `GET_CLP_RANGE` only makes sense where many
+cells would otherwise recalculate at once.
+
+Instead of one HTTP request per cell, `GET_CLP_RANGE` sends every (date, code) pair in
+one request and gets every value back in one response, using Google Sheets' array
+"spill" behavior:
+
+```
+=GET_CLP_RANGE(A1:A54, B1:B54)
+```
+instead of dragging `=GET_CLP(A1, B1)` down 54 rows.
+
+**POST /exec** (same fixed Web App endpoint path as `doGet` -- Apps Script Web Apps
+route strictly by HTTP method, `doGet` vs `doPost`, not by URL).
+
+**Authentication:** Same as `GET_CLP` -- `key` query param (`?key=...`), checked against
+the same `GET_CLP_API_KEY` Script Property. Still the query string, not the body --
+only the pairs themselves move into JSON, since a GET-style query string with 100+
+date/code pairs would blow past a practical URL length limit.
+
+**Request body** (JSON):
+```json
+{ "pairs": [{ "date": "2026-09-15", "code": "USD" }, { "date": "2026-09-16", "code": "USD" }] }
+```
+Max **500 pairs** per request (`GET_CLP_RANGE_MAX_PAIRS` in `src/interfaces/webapp.js`) --
+generous relative to the problem that motivated this (108 cells today, +24/year), while
+still bounding how much of the ~30k-row `VALUES` sheet one request can scan on a full
+cache miss.
+
+**Response:** always `200`, `Content-Type: application/json`.
+
+- **Success:** a JSON array, same length and order as the request's `pairs`. Each
+  element is independently either a bare number (successful lookup) or one of `GET_CLP`'s
+  own fixed strings, `"Not found"` or `"Missing parameters"` -- one bad/missing pair never
+  fails the whole batch:
+  ```json
+  [957.53, "Not found", 36000.12]
+  ```
+- **Request-level failure** (bad/missing `key`, unparsable body, empty or oversized
+  `pairs`): a JSON object instead of an array, since there's no per-pair result to give:
+  ```json
+  { "error": "Unauthorized" }
+  ```
+
+Caching mirrors `GET_CLP` exactly -- same `code|date` `CacheService` key (see
+"Response" above for `GET_CLP`), so a batch that overlaps with recent single `GET_CLP`
+calls (or a repeated/partial `GET_CLP_RANGE` batch) only touches the `VALUES` sheet for
+genuine cache misses.
+
+**Example:**
+```bash
+curl -X POST \
+  "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec?key=<GET_CLP_API_KEY>" \
+  -H "Content-Type: application/json" \
+  -d '{"pairs": [{"date": "2026-09-15", "code": "USD"}]}'
+# => [957.53]
+```
+
+### Install (once per consuming Apps Script project)
+
+Same prerequisites as `GET_CLP` (steps 1-2 in its own "Install" section above --
+`GET_CLP_API_KEY` Script Property already covers both formulas, nothing extra to
+configure). Add this function to the same `GetClp.gs` file (it reuses
+`GET_CLP_WEB_APP_URL` and `GET_CLP_MAX_RETRY_BUDGET_MILLIS_` already defined there):
+
+```javascript
+/**
+ * Batch counterpart to GET_CLP for many cells recalculating together (see
+ * plan-get-clp-02-range-batch.md). Usage:
+ * =GET_CLP_RANGE(A1:A54, B1:B54) -- dates and codes columns, same row
+ * count -- replaces 54 separate GET_CLP formulas with one call that
+ * spills its results down the column automatically.
+ * @param {Array<Array<Date|string>>} dates a single-column range of dates
+ * @param {Array<Array<string>>} codes a single-column range of codes,
+ *   same row count as `dates`
+ * @return {Array<Array<number|string>>} one row per input row, same order
+ * @customfunction
+ */
+function GET_CLP_RANGE(dates, codes) {
+  if (!Array.isArray(dates) || !Array.isArray(codes)) {
+    return [["Missing parameters"]];
+  }
+  if (dates.length !== codes.length) {
+    return [["Mismatched range sizes"]];
+  }
+
+  var timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
+  var pairs = dates.map(function (row, index) {
+    var rawDate = row[0];
+    var dateParam =
+      rawDate instanceof Date ? Utilities.formatDate(rawDate, timeZone, "yyyy-MM-dd") : String(rawDate);
+    return { date: dateParam, code: String(codes[index][0]) };
+  });
+
+  var apiKey = PropertiesService.getScriptProperties().getProperty("GET_CLP_API_KEY");
+  var url = GET_CLP_WEB_APP_URL + "?key=" + encodeURIComponent(apiKey || "");
+
+  var responseText = fetchGetClpRangeResponseWithRetries_(url, pairs);
+  var parsed;
+  try {
+    parsed = JSON.parse(responseText);
+  } catch (parseError) {
+    throw new Error("Unexpected response");
+  }
+
+  if (!Array.isArray(parsed)) {
+    // {"error": "..."} shape -- a batch-level failure (auth, malformed
+    // body, empty/oversized pairs), not a per-row result.
+    throw new Error((parsed && parsed.error) || "Unexpected response");
+  }
+
+  return parsed.map(function (value) {
+    return [value];
+  });
+}
+
+/**
+ * Same rationale/pattern as fetchGetClpResponseWithRetries_ above, adapted
+ * for a POST request carrying the batch payload instead of a GET query
+ * string, and "recognized" meaning "valid JSON" (a batch-level {"error"}
+ * object still counts -- GET_CLP_RANGE decides what to do with it above,
+ * this helper's only job is not retrying on a genuinely garbled response).
+ * @param {string} url
+ * @param {Array<{date: string, code: string}>} pairs
+ * @return {string} the raw response body from the last attempt
+ */
+function fetchGetClpRangeResponseWithRetries_(url, pairs) {
+  var maxAttempts = 3;
+  var startedAt = Date.now();
+  var lastText = "";
+  var options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({ pairs: pairs }),
+    muteHttpExceptions: true,
+  };
+  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+    if (attempt > 1 && Date.now() - startedAt > GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
+      break;
+    }
+    var response = UrlFetchApp.fetch(url, options);
+    lastText = response.getContentText();
+    if (isRecognizedGetClpRangeResponse_(lastText)) {
+      return lastText;
+    }
+    if (attempt < maxAttempts && Date.now() - startedAt < GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
+      Utilities.sleep(300 * attempt);
+    }
+  }
+  return lastText;
+}
+
+/**
+ * @param {string} text
+ * @return {boolean}
+ */
+function isRecognizedGetClpRangeResponse_(text) {
+  try {
+    JSON.parse(text);
+    return true;
+  } catch (parseError) {
+    return false;
+  }
+}
+```
+
+Save. `=GET_CLP_RANGE(A1:A54, B1:B54)` should now spill 54 values down the column.
