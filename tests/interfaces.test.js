@@ -14,13 +14,14 @@ describe("interfaces (pf-sheets)", () => {
   });
 });
 
-// Same rationale as above, applied to the Web App entry point: doGet
-// touches SpreadsheetApp/PropertiesService/ContentService directly, so
-// it's validated end-to-end against the real deployment (see
-// plan-get-clp-01-webapp.md "Verificación final"), not with faked globals
-// here.
+// Same rationale as above, applied to the Web App entry points: doGet
+// and doPost touch SpreadsheetApp/PropertiesService/ContentService/
+// CacheService directly, so they're validated end-to-end against the
+// real deployment (see plan-get-clp-01-webapp.md "Verificación final" and
+// plan-get-clp-02-range-batch.md), not with faked globals here.
 describe("interfaces/webapp (pf-sheets)", () => {
-  it("exposes doGet as a function", () => {
+  it("exposes doGet and doPost as functions", () => {
     expect(typeof webapp.doGet).toBe("function");
+    expect(typeof webapp.doPost).toBe("function");
   });
 });
