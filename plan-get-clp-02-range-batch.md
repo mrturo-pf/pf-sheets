@@ -1,12 +1,10 @@
 # Plan: `GET_CLP_RANGE` — lookup por lote para reducir llamadas HTTP concurrentes
 
-> **Estado: INCIDENTE RESUELTO Y VERIFICADO EN PRODUCCIÓN por el usuario.** El fix de
-> `isDateValue_` (versión 12 de la Library) resolvió el `"Not found"` al 100% -- tanto
-> `GET_CLP` como `GET_CLP_RANGE` vuelven a resolver valores reales en Payroll. Detrás de
-> eso surgió una pregunta de UX legítima (no un bug): `GET_CLP_RANGE` no puede usar
-> `IFERROR` por celda como `GET_CLP` -- ver " `describeMissingRate`: UX de
-> `"Not found"` en `GET_CLP_RANGE`" más abajo para el porqué y el fix aplicado (fecha
-> futura -> celda vacía, presente/pasada -> `"Not found"`). Es la continuación de
+> **Estado: INCIDENTE RESUELTO Y VERIFICADO EN PRODUCCIÓN por el usuario en (05)
+> Payroll.** Surgió un segundo incidente en (12) MedicalRefund por rangos abiertos
+> (`$F$4:$F`) chocando contra el límite de tamaño de lote -- ver "Incidente 2: rangos
+> abiertos en (12) MedicalRefund" más abajo para diagnóstico y fix (ya implementado,
+> testeado, pendiente de deploy). Es la continuación de
 > [`plan-get-clp-01-webapp.md`](plan-get-clp-01-webapp.md) (ese plan ya está
 > completo y en producción) -- este documento cubre el problema de escala detectado
 > después del lanzamiento.
@@ -261,6 +259,56 @@ error que atrapar) -- documentado con el ejemplo exacto en `docs/api.md`, secci�
 (futuro, hoy/presente, pasado) -- 97/97 tests en el repo, lint limpio, cobertura
 100% líneas/statements/funciones sin bajar.
 
+## Incidente 2: rangos abiertos en (12) MedicalRefund (`$F$4:$F, $T$4:$T`)
+
+El usuario confirmó que (05) Payroll funciona 100% bien, pero (12) MedicalRefund usa
+`=GET_CLP_RANGE($F$4:$F, $T$4:$T)` -- **rangos sin acotar** (columna completa hasta el
+final de la hoja), a diferencia de Payroll (`$D$7:$D$60`, acotado). La pestaña tiene un
+total de 1000 filas.
+
+**Causa raíz, confirmada por inspección de código (alta confianza):** un rango abierto
+como `$F$4:$F` envía a Sheets **una fila por cada fila real de la hoja**, sin importar
+cuántas tengan datos -- eso son ~997 pares (filas 4 a 1000). `GET_CLP_RANGE_MAX_PAIRS`
+estaba fijado en 500 como límite **sobre el largo crudo del array `pairs`**, sin
+distinguir filas con datos reales de filas vacías. Como 997 > 500, `doPost` rechazaba
+**el lote entero** con `{"error": "Batch too large (max 500 pairs)"}` -- eso se
+propaga como un único error en la celda ancla de la fórmula, y no se resolvía **nada**,
+ni siquiera las filas con datos reales.
+
+**Fix aplicado:**
+
+- **`classifyRangePair(rawCode, rawDate)`** nueva función pura en
+  `src/domain/index.js`: clasifica cada par ANTES de normalizar/buscar en tres estados
+  -- `"blank"` (ambos vacíos -- fila de relleno de un rango abierto, no es un error),
+  `"malformed"` (exactamente uno de los dos vacío -- un error de datos real, alguien
+  puso fecha sin código o viceversa), o el par en sí (ambos presentes, listo para
+  `normalizeDateKey`/`applySheetCodeAlias`).
+- **`GET_CLP_RANGE_MAX_PAIRS` (500) ahora aplica solo a pares REALES** (ambos
+  presentes) -- las filas de relleno de un rango abierto ya no cuentan contra el
+  límite ni tocan la hoja `VALUES` para nada, resuelven directo a `""`.
+- **Nuevo `GET_CLP_RANGE_MAX_REQUEST_PAIRS = 5000`**, un techo separado y mucho más
+  generoso sobre el tamaño crudo del array recibido (reales + blancos + malformados) --
+  protege contra payloads absurdamente grandes sin chocar con el uso legítimo de
+  rangos abiertos.
+- `doPost` actualizado: la fila `"blank"` resuelve a `""`, la fila `"malformed"`
+  resuelve a `"Missing parameters"` (se preserva para el caso real de error).
+- Documentado en `docs/api.md`: sección nueva "Blank rows in an open-ended range", más
+  ajustes en la sección de límites de tamaño y en la lista de valores de respuesta.
+
+**Resultado esperado en MedicalRefund:** el mismo `=GET_CLP_RANGE($F$4:$F, $T$4:$T)`
+sin modificar debería ahora resolver las filas con datos reales normalmente, mostrar
+`""` en las ~850 filas de relleno (en vez de fallar el lote entero), y `"Missing
+parameters"` solo si una fila real tiene fecha sin código o viceversa -- sin que el
+usuario tenga que acotar el rango ni actualizar la fórmula a mano cuando la hoja
+crezca.
+
+**Tests:** 3 casos nuevos para `classifyRangePair` en `tests/domain.test.js` (blanco,
+malformado en ambas direcciones, válido) -- 100/100 tests en el repo, lint limpio,
+cobertura 100% líneas/statements/funciones sin bajar.
+
+**Pendiente:** luz verde del usuario para commitear/pushear, y que confirme en
+MedicalRefund que las filas reales resuelven bien y las de relleno quedan en blanco.
+
 ## Progreso (esta sesión)
 
 - **`findRateValues(accessor, pairs, timeZone)`** agregada en `src/domain/index.js` --
@@ -472,11 +520,13 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
 4. ~~Repuntar versión en Payroll/MedicalRefund~~ -- **hecho**, usuario confirmó que
    ambas fórmulas (`GET_CLP` y `GET_CLP_RANGE`) ya resuelven valores reales en
    Payroll. **Incidente cerrado.**
-5. ~~UX de `"Not found"` en `GET_CLP_RANGE`~~ -- **hecho esta sesión**: fix
-   `describeMissingRate` (blank para fecha futura, `"Not found"` para
-   presente/pasada), documentado en `docs/api.md`, 97/97 tests, lint limpio.
-   **Pendiente**: luz verde explícita del usuario para commitear/pushear este
-   cambio (mismo `AGENTS.md`, ningún agente commitea sin instrucción expresa) y,
-   una vez deployado, que el usuario confirme en Payroll que las fechas futuras
-   ahora aparecen en blanco y las pasadas/presentes sin match siguen diciendo
-   `"Not found"`.
+**Paso 5.** ~~UX de `"Not found"` en `GET_CLP_RANGE`~~ -- **hecho, deployado y
+   confirmado por el usuario en (05) Payroll**: fix `describeMissingRate` (blank para
+   fecha futura, `"Not found"` para presente/pasada).
+**Paso 6.** ~~Rangos abiertos rompen `GET_CLP_RANGE` en (12) MedicalRefund~~ -- **fix
+   aplicado esta sesión** (`classifyRangePair` + desacoplar `GET_CLP_RANGE_MAX_PAIRS`
+   de las filas de relleno), 100/100 tests, lint limpio. **Pendiente**: luz verde
+   explícita del usuario para commitear/pushear (mismo `AGENTS.md`, ningún agente
+   commitea sin instrucción expresa) y, una vez deployado, que el usuario confirme en
+   MedicalRefund que `=GET_CLP_RANGE($F$4:$F, $T$4:$T)` ya resuelve las filas reales
+   y deja en blanco las de relleno sin fallar el lote entero.

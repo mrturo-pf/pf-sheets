@@ -535,6 +535,37 @@ function describeMissingRate(dateKey, todayKey) {
   return dateKey > todayKey ? "" : "Not found";
 }
 
+/**
+ * Classifies a raw (code, date) pair from a GET_CLP_RANGE request body
+ * BEFORE any normalization/lookup happens. Exists because an open-ended
+ * range reference in a formula (e.g. `$F$4:$F`, covering a whole column
+ * to the sheet's last row) sends one pair per sheet row, and most of
+ * those rows past the real data are simply blank padding -- treating a
+ * fully-blank pair the same as a genuinely malformed one (only code OR
+ * date present, a real data-entry mistake worth flagging) would both
+ * clutter the result with hundreds of "Missing parameters" cells AND
+ * count every blank padding row against GET_CLP_RANGE_MAX_PAIRS, making
+ * open-ended references fail outright on any sheet whose total row count
+ * exceeds that cap regardless of how much real data it holds -- exactly
+ * the incident reported for "(12) MedicalRefund" in
+ * plan-get-clp-02-range-batch.md.
+ * @param {*} rawCode
+ * @param {*} rawDate
+ * @returns {"blank"|"malformed"|{code: *, date: *}} "blank" when both are
+ *   falsy (nothing to look up -- not an error), "malformed" when exactly
+ *   one is falsy (a real mistake), or the pair itself when both are
+ *   present (ready for normalizeDateKey/applySheetCodeAlias downstream)
+ */
+function classifyRangePair(rawCode, rawDate) {
+  if (!rawCode && !rawDate) {
+    return "blank";
+  }
+  if (!rawCode || !rawDate) {
+    return "malformed";
+  }
+  return { code: rawCode, date: rawDate };
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normalizeDateKey: normalizeDateKey,
@@ -552,5 +583,6 @@ if (typeof module !== "undefined") {
     findRateValue: findRateValue,
     findRateValues: findRateValues,
     describeMissingRate: describeMissingRate,
+    classifyRangePair: classifyRangePair,
   };
 }

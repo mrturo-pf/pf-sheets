@@ -190,6 +190,11 @@ At least one of `dates`/`codes` must be an actual range -- that's what tells the
 function how many rows to resolve; passing two constants isn't a batch, it's a single
 `GET_CLP` lookup, so use that directly instead.
 
+**Open-ended ranges are supported** (e.g. `$F$4:$F`, covering a whole column down to
+the sheet's last row) -- no need to keep bumping the formula's upper bound by hand as
+real data grows, unlike "(05) Payroll"'s bounded `$D$7:$D$60`. See "Blank rows in an
+open-ended range" below for how the padding rows past your real data are handled.
+
 **POST /exec** (same fixed Web App endpoint path as `doGet` -- Apps Script Web Apps
 route strictly by HTTP method, `doGet` vs `doPost`, not by URL).
 
@@ -202,18 +207,25 @@ date/code pairs would blow past a practical URL length limit.
 ```json
 { "pairs": [{ "date": "2026-09-15", "code": "USD" }, { "date": "2026-09-16", "code": "USD" }] }
 ```
-Max **500 pairs** per request (`GET_CLP_RANGE_MAX_PAIRS` in `src/interfaces/webapp.js`) --
-generous relative to the problem that motivated this (108 cells today, +24/year), while
-still bounding how much of the ~30k-row `VALUES` sheet one request can scan on a full
-cache miss.
+Max **500 REAL pairs** per request (`GET_CLP_RANGE_MAX_PAIRS` in
+`src/interfaces/webapp.js`) -- generous relative to the problem that motivated this
+(108 cells today, +24/year in "(05) Payroll"), while still bounding how much of the
+~30k-row `VALUES` sheet one request can scan on a full cache miss. This cap applies
+only to pairs where both `date` and `code` are present -- blank padding rows from an
+open-ended range (see below) never count against it, so a whole-column reference on a
+1000-row sheet with 150 real data rows is fine. A separate, much larger ceiling
+(`GET_CLP_RANGE_MAX_REQUEST_PAIRS = 5000`) bounds the raw size of the incoming array
+(real + blank + malformed combined) as a sanity check on payload size, not on lookup
+cost.
 
 **Response:** always `200`, `Content-Type: application/json`.
 
 - **Success:** a JSON array, same length and order as the request's `pairs`. Each
   element is independently a bare number (successful lookup), `""` (a future date with
-  no match -- see "Not found vs. blank" below), `"Not found"` (a present/past date with
-  no match), or `"Missing parameters"` -- one bad/missing pair never fails the whole
-  batch:
+  no match, or a fully blank pair -- see "Not found vs. blank" and "Blank rows in an
+  open-ended range" below), `"Not found"` (a present/past date with no match), or
+  `"Missing parameters"` (exactly one of `date`/`code` present) -- one bad/blank pair
+  never fails the whole batch:
   ```json
   [957.53, "", "Not found", 36000.12]
   ```
@@ -263,6 +275,30 @@ comparison against the literal text (not `IFERROR`, since there's no error to ca
 where `A1:A54` is itself the spilled output of a `GET_CLP_RANGE(...)` formula elsewhere
 -- this avoids calling `GET_CLP_RANGE` (and re-paying its HTTP batch) a second time just
 to reformat its own output.
+
+### Blank rows in an open-ended range
+
+An open-ended reference like `=GET_CLP_RANGE($F$4:$F, $T$4:$T)` sends one `(date, code)`
+pair **per sheet row**, all the way down to the sheet's actual total row count -- not
+just the rows that currently hold real data. On a 1000-row sheet with 150 rows of real
+data, that is ~850 pairs where both `date` and `code` are simply empty.
+
+`doPost` classifies each pair before doing any lookup (`classifyRangePair` in
+`src/domain/index.js`):
+
+- **Both `date` and `code` empty:** `""` (blank cell) -- ordinary padding past your real
+  data, not an error, and **does not count** against `GET_CLP_RANGE_MAX_PAIRS` (see
+  above) or ever touch the `VALUES` sheet.
+- **Exactly one of `date`/`code` empty:** `"Missing parameters"` -- this is NOT normal
+  padding (a fully blank row has both empty), so it flags a real data-entry mistake
+  (e.g. a currency code typed with no matching date, or vice versa) worth fixing.
+
+This is what makes an open-ended range reference practical in the first place: you
+never have to keep bumping the formula's upper bound as real rows are added (unlike
+"(05) Payroll"'s bounded `$D$7:$D$60`), and the hundreds of padding rows past your data
+stay silently blank instead of showing `"Missing parameters"` on every one of them or,
+worse, tripping the batch-size cap and failing the entire formula (the original
+incident reported for "(12) MedicalRefund" -- see `plan-get-clp-02-range-batch.md`).
 
 Caching mirrors `GET_CLP` exactly -- same `code|date` `CacheService` key (see
 "Response" above for `GET_CLP`), so a batch that overlaps with recent single `GET_CLP`

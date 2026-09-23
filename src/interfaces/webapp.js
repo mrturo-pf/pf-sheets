@@ -100,8 +100,19 @@ function doGet(e) {
 // relative to the problem that motivated this endpoint (108 cells today,
 // +24/year in "(05) Payroll" -- see plan-get-clp-02-range-batch.md), while
 // still bounding how much of the ~30k-row VALUES sheet a single request
-// can scan through on a full cache miss.
+// can scan through on a full cache miss. Applies to REAL pairs only (both
+// code and date present) -- see classifyRangePair in domain/index.js: an
+// open-ended range reference (e.g. "$F$4:$F") sends one pair per sheet
+// row regardless of how many actually hold data, so blank padding rows
+// must not count against this cap (confirmed incident: "(12)
+// MedicalRefund", 1000-row sheet -- see plan-get-clp-02-range-batch.md).
 var GET_CLP_RANGE_MAX_PAIRS = 500;
+
+// Separate, much larger ceiling on the RAW size of the incoming pairs
+// array (real + blank + malformed combined) -- a sanity cap on payload
+// size/JSON-parsing cost, not on lookup cost. Generous enough to cover a
+// whole-column reference on any realistically-sized consumer sheet.
+var GET_CLP_RANGE_MAX_REQUEST_PAIRS = 5000;
 
 /**
  * @param {*} payload JSON-serializable value
@@ -122,11 +133,18 @@ function respondJson(payload) {
  *
  * Request body: `{"pairs": [{"date": "...", "code": "..."}, ...]}`.
  * Response body: a JSON array, same length/order as `pairs`, where each
- * element is either a number (successful lookup) or one of doGet's own
- * fixed strings (`"Not found"`, `"Missing parameters"`) -- one bad pair
- * never fails the whole batch. Request-level failures (bad key, malformed
- * body, empty/oversized batch) respond with `{"error": "..."}` instead of
- * an array, since there's no per-pair result to report in those cases.
+ * element is independently a number (successful lookup), `""` (either a
+ * blank pair -- both `date` and `code` empty, the common case for
+ * trailing padding rows sent by an open-ended range reference like
+ * `$F$4:$F` -- or a future date with no match yet, see
+ * describeMissingRate), `"Not found"` (a present/past date genuinely
+ * missing from VALUES), or `"Missing parameters"` (exactly one of
+ * `date`/`code` present -- a real data-entry mistake, not padding). One
+ * bad/blank pair never fails the whole batch. Request-level failures (bad
+ * key, malformed body, empty batch, raw payload over
+ * GET_CLP_RANGE_MAX_REQUEST_PAIRS, or too many REAL pairs over
+ * GET_CLP_RANGE_MAX_PAIRS) respond with `{"error": "..."}` instead of an
+ * array, since there's no per-pair result to report in those cases.
  *
  * Per-pair caching mirrors doGet exactly (same `code|date` cache key, see
  * getCachedRateValue/cacheRateValue) so a partially-repeated batch, or one
@@ -155,8 +173,8 @@ function doPost(e) {
   if (!Array.isArray(pairs) || pairs.length === 0) {
     return respondJson({ error: "Missing parameters" });
   }
-  if (pairs.length > GET_CLP_RANGE_MAX_PAIRS) {
-    return respondJson({ error: "Batch too large (max " + GET_CLP_RANGE_MAX_PAIRS + " pairs)" });
+  if (pairs.length > GET_CLP_RANGE_MAX_REQUEST_PAIRS) {
+    return respondJson({ error: "Batch too large (max " + GET_CLP_RANGE_MAX_REQUEST_PAIRS + " pairs)" });
   }
 
   var spreadsheet = SpreadsheetApp.openById(GET_CLP_SPREADSHEET_ID);
@@ -173,20 +191,33 @@ function doPost(e) {
   var todayKey = normalizeDateKey(new Date(), timeZone);
 
   var normalizedPairs = pairs.map(function (pair) {
-    var rawCode = pair && pair.code;
-    var rawDate = pair && pair.date;
-    if (!rawCode || !rawDate) {
-      return null;
+    var classification = classifyRangePair(pair && pair.code, pair && pair.date);
+    if (classification === "blank" || classification === "malformed") {
+      return classification;
     }
-    return { code: applySheetCodeAlias(rawCode), date: normalizeDateKey(rawDate, timeZone) };
+    return { code: applySheetCodeAlias(classification.code), date: normalizeDateKey(classification.date, timeZone) };
   });
+
+  // The per-request-scan-cost cap applies only to pairs that actually
+  // need a lookup -- blank padding rows from an open-ended range
+  // reference (see GET_CLP_RANGE_MAX_PAIRS above) never touch VALUES.
+  var realPairCount = normalizedPairs.filter(function (p) {
+    return p !== "blank" && p !== "malformed";
+  }).length;
+  if (realPairCount > GET_CLP_RANGE_MAX_PAIRS) {
+    return respondJson({ error: "Batch too large (max " + GET_CLP_RANGE_MAX_PAIRS + " real pairs)" });
+  }
 
   var results = new Array(pairs.length);
   var missIndexes = [];
   var missPairs = [];
 
   normalizedPairs.forEach(function (normalizedPair, index) {
-    if (!normalizedPair) {
+    if (normalizedPair === "blank") {
+      results[index] = "";
+      return;
+    }
+    if (normalizedPair === "malformed") {
       results[index] = "Missing parameters";
       return;
     }

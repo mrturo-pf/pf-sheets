@@ -14,6 +14,7 @@ const {
   findRateValue,
   findRateValues,
   describeMissingRate,
+  classifyRangePair,
 } = require("../src/domain");
 
 const TZ = "America/Santiago";
@@ -605,5 +606,25 @@ describe("describeMissingRate", () => {
 
   it('returns "Not found" for a date strictly before today (past)', () => {
     expect(describeMissingRate("2026-09-22", "2026-09-23")).toBe("Not found");
+  });
+});
+
+// Regression coverage for the "(12) MedicalRefund" open-ended-range
+// incident: $F$4:$F sends one pair per sheet row up to the sheet's total
+// row count, so most rows past the real data are blank padding, not
+// malformed input -- see docs/api.md and plan-get-clp-02-range-batch.md.
+describe("classifyRangePair", () => {
+  it('returns "blank" when both code and date are empty (a padding row from an open-ended range)', () => {
+    expect(classifyRangePair("", "")).toBe("blank");
+    expect(classifyRangePair(null, undefined)).toBe("blank");
+  });
+
+  it('returns "malformed" when exactly one of code/date is present (a real data-entry mistake)', () => {
+    expect(classifyRangePair("USD", "")).toBe("malformed");
+    expect(classifyRangePair("", "2026-09-15")).toBe("malformed");
+  });
+
+  it("returns the pair itself when both code and date are present", () => {
+    expect(classifyRangePair("USD", "2026-09-15")).toEqual({ code: "USD", date: "2026-09-15" });
   });
 });
