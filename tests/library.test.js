@@ -1,8 +1,9 @@
 const vm = require("vm");
 const { isDateValue_ } = require("../src/interfaces/library");
 
-// Regression test for the "Not found" incident documented in
-// plan-get-clp-02-range-batch.md: `value instanceof Date` fails when the
+// Regression test for the Not found incident documented in
+// docs/design-notes.md (Cross-realm instanceof gotcha in Apps Script
+// Libraries): value instanceof Date fails when the
 // Date object was constructed in a DIFFERENT Apps Script "realm" (the
 // calling project, e.g. Payroll) than the one doing the check (this
 // Library, exchange-rates) -- each Apps Script project gets its own V8

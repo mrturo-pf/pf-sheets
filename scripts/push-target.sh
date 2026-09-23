@@ -57,7 +57,7 @@ fi
 # Library" section). A Library reference in a consuming project is always
 # pinned to a specific version number -- Apps Script has no supported
 # "always use HEAD" option for production custom-function calls (see
-# plan-get-clp-01-webapp.md's Fase 1.5) -- so `clasp push` alone does NOT
+# docs/design-notes.md) -- so `clasp push` alone does NOT
 # make new library code reachable by consumers; a fresh version has to
 # exist for someone to point a consumer at it (see
 # docs/ci.md#library-version-cut-get_clpget_clp_range).

@@ -4,17 +4,19 @@
  * `<LibraryIdentifier>.GET_CLP(...)` / `.GET_CLP_RANGE(...)` from a tiny
  * @customfunction wrapper defined in their own bound script, instead of
  * every consumer hand-pasting this whole file's logic (see
- * plan-get-clp-02-range-batch.md, "Punto 2" -- Apps Script custom
+ * docs/design-notes.md, "Why GET_CLP/GET_CLP_RANGE's client code is
+ * distributed as an Apps Script Library" -- Apps Script custom
  * functions must be top-level in the CALLING project; `=Lib.GET_CLP(...)`
- * directly from a cell is not supported, confirmed in
- * plan-get-clp-01-webapp.md's Fase 1.5 spike -- so the wrapper can't be
- * skipped, but it's now 3 lines instead of this entire file).
+ * directly from a cell is not supported, see docs/design-notes.md,
+ * "Apps Script custom-function sandbox constraints" -- so the wrapper
+ * can't be skipped, but it's now 3 lines instead of this entire file).
  *
  * Publishing this as a Library does NOT change how GET_CLP/GET_CLP_RANGE
  * actually get their data: they still go through the Web App
  * (`doGet`/`doPost` in webapp.js) over UrlFetchApp. Library code executes
  * inside the SAME sandboxed call stack as whatever custom function
- * invoked it (confirmed in plan-get-clp-01-webapp.md's Fase 1.5), so
+ * invoked it (see docs/design-notes.md, "Apps Script custom-function
+ * sandbox constraints"), so
  * `SpreadsheetApp.openById()`/`openByUrl()` stay forbidden here exactly
  * like they would in the consumer's own script -- only the transport-
  * agnostic client logic (retry/backoff, request building, response
@@ -44,7 +46,8 @@ var GET_CLP_WEB_APP_URL =
   "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec";
 
 // Custom functions get killed by the platform at 30s, full stop (see
-// plan-get-clp-01-webapp.md's Fase 1.5) -- budgeting retries to this
+// docs/design-notes.md, "Apps Script custom-function sandbox
+// constraints") -- budgeting retries to this
 // ceiling means GET_CLP/GET_CLP_RANGE give up on their OWN terms (a
 // clean, throwable, IFERROR-catchable error) well before Google's
 // platform forcibly kills the whole execution.
@@ -57,9 +60,10 @@ var GET_CLP_MAX_RETRY_BUDGET_MILLIS_ = 25000;
  * MedicalRefund) and passed as an argument into this Library's public
  * functions fails `instanceof Date` here even though it genuinely is a
  * Date -- the classic cross-realm instanceof gotcha (same root cause as
- * `instanceof Array` failing across iframes in a browser). Confirmed as
- * the root cause of the "Not found" incident in
- * plan-get-clp-02-range-batch.md: the broken branch silently fell back to
+ * `instanceof Array` failing across iframes in a browser). See
+ * docs/design-notes.md, "Cross-realm `instanceof` gotcha in Apps Script
+ * Libraries", for the full incident this fixed: the broken branch
+ * silently fell back to
  * `String(date)` (e.g. "Mon Jan 15 2024 00:00:00 GMT-0300 ...") instead
  * of formatting to "yyyy-MM-dd", so no lookup ever matched.
  * `Object.prototype.toString.call(...)` reads the internal `[[Class]]`
@@ -118,8 +122,7 @@ function GET_CLP(date, code) {
   // Neither a number nor one of doGet's own fixed strings, even after
   // retries -- almost certainly Google's Web App redirect infrastructure
   // glitching under a burst of concurrent calls (confirmed via the
-  // Executions log in a real incident, not guessed -- see
-  // plan-get-clp-02-range-batch.md).
+  // Executions log in a real incident, not guessed).
   throw new Error("Unexpected response");
 }
 
@@ -162,8 +165,8 @@ function isRecognizedGetClpResponse_(text) {
 }
 
 /**
- * Batch counterpart to GET_CLP for many cells recalculating together (see
- * plan-get-clp-02-range-batch.md). `dates` and `codes` can each be either
+ * Batch counterpart to GET_CLP for many cells recalculating together --
+ * see docs/api.md, "GET_CLP_RANGE". `dates` and `codes` can each be either
  * a range (one value per row) or a single constant reused for every row
  * -- whichever matches how the consuming sheet is actually laid out
  * (e.g. "(05) Payroll": a range of dates, and a range of codes where

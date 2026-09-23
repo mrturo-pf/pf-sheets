@@ -3,13 +3,14 @@
  * `interfaces/index.js`'s bound macro. Split into its own file by SRP:
  * "macro triggered manually from a menu" and "public HTTP API" are
  * different reasons to change, not just a way to dodge a line-count
- * limit (see AGENTS.md / plan-get-clp-01-webapp.md Fase 2).
+ * limit.
  *
  * A `doGet` invocation runs as a genuinely separate execution from
  * whatever custom function called it via `UrlFetchApp.fetch(...)` -- that
  * separation is *why* this design works at all: a custom function's own
  * sandbox forbids `SpreadsheetApp.openById()`/`openByUrl()` outright (see
- * plan-get-clp-01-webapp.md, Fase 1.5), but this file isn't running inside
+ * docs/design-notes.md, "Apps Script custom-function sandbox
+ * constraints"), but this file isn't running inside
  * that sandbox, so it can use `openById()` freely.
  *
  * Like `interfaces/index.js`, this is one of the few files allowed to
@@ -98,14 +99,14 @@ function doGet(e) {
 
 // Max (code, date) pairs accepted per GET_CLP_RANGE request. Generous
 // relative to the problem that motivated this endpoint (108 cells today,
-// +24/year in "(05) Payroll" -- see plan-get-clp-02-range-batch.md), while
+// +24/year in "(05) Payroll"), while
 // still bounding how much of the ~30k-row VALUES sheet a single request
 // can scan through on a full cache miss. Applies to REAL pairs only (both
 // code and date present) -- see classifyRangePair in domain/index.js: an
 // open-ended range reference (e.g. "$F$4:$F") sends one pair per sheet
 // row regardless of how many actually hold data, so blank padding rows
-// must not count against this cap (confirmed incident: "(12)
-// MedicalRefund", 1000-row sheet -- see plan-get-clp-02-range-batch.md).
+// must not count against this cap (see docs/api.md, Blank rows in an
+// open-ended range).
 var GET_CLP_RANGE_MAX_PAIRS = 500;
 
 // Separate, much larger ceiling on the RAW size of the incoming pairs
@@ -124,8 +125,8 @@ function respondJson(payload) {
 
 /**
  * Serves GET_CLP_RANGE over HTTP -- the batch counterpart to doGet, so a
- * burst of many cells recalculating together (see
- * plan-get-clp-02-range-batch.md, "(05) Payroll": 108+ cells) pays for
+ * burst of many cells recalculating together (see docs/api.md,
+ * "GET_CLP_RANGE") pays for
  * ONE HTTP round trip and ONE doPost invocation instead of one doGet per
  * cell. `key` stays a query param (`?key=...`), same as doGet -- only the
  * pairs themselves move into a JSON POST body, since 100+ date/code pairs
@@ -187,7 +188,8 @@ function doPost(e) {
   // Same realm as domain/ (this file IS exchange-rates, never crosses a
   // Library boundary) -- passing a real Date into normalizeDateKey here
   // is safe, unlike library.js's isDateValue_ situation (see
-  // plan-get-clp-02-range-batch.md).
+  // docs/design-notes.md, Cross-realm instanceof gotcha in Apps Script
+  // Libraries).
   var todayKey = normalizeDateKey(new Date(), timeZone);
 
   var normalizedPairs = pairs.map(function (pair) {

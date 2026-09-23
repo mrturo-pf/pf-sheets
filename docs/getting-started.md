@@ -89,7 +89,7 @@ it's recorded here purely so it doesn't only live in one person's browser histor
 | Deployment ID | `AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk` |
 | Web app URL | `https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec` |
 | Execute as | Me (`USER_DEPLOYING` in the manifest) |
-| Who has access | Anyone, including anonymous requests (`ANYONE_ANONYMOUS` in the manifest) -- access control is enforced by the `key` query param, not by this setting; see "Problemas encontrados" #3 in `../plan-get-clp-01-webapp.md` |
+| Who has access | Anyone, including anonymous requests (`ANYONE_ANONYMOUS` in the manifest) -- access control is enforced by the `key` query param, not by this setting; see [`design-notes.md`](design-notes.md#web-app-access-control-anonymous-reachability-plus-a-key) |
 
 Neither value is a secret -- an Apps Script deployment ID/URL grants nothing by
 itself, since `doGet` (once implemented) still requires `GET_CLP_API_KEY`. The
@@ -109,8 +109,8 @@ The **same** `exchange-rates` project is also published as an Apps Script **Libr
 MedicalRefund, ...) get `GET_CLP`/`GET_CLP_RANGE` without hand-pasting the full retry/
 parsing logic; see [`api.md`](api.md#consuming-get_clp--get_clp_range-from-another-apps-script-project-library)
 for the consumer-side install runbook and
-[`../plan-get-clp-02-range-batch.md`](../plan-get-clp-02-range-batch.md) ("Punto 2") for
-why a Library was chosen over hand-pasting or this repo owning consumer projects
+[`design-notes.md`](design-notes.md#why-get_clpget_clp_ranges-client-code-is-distributed-as-an-apps-script-library)
+for why a Library was chosen over hand-pasting or this repo owning consumer projects
 wholesale.
 
 | | |

@@ -184,7 +184,8 @@ update what a live Web App URL serves — a Web App deployment freezes a specifi
 version at the moment it's deployed (see
 [`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
 for how that deployment was first created, and
-[`../plan-get-clp-01-webapp.md`](../plan-get-clp-01-webapp.md) for the full design). So for any
+[`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints)
+for the full design). So for any
 target that has one, `scripts/push-target.sh` runs one extra step after `clasp push`:
 
 ```bash
@@ -222,8 +223,9 @@ clasp version "CI: <commit sha>"
 
 This cuts a new **immutable** Library version -- required because a Library reference in
 a consuming project always pins to a specific version number; there is no supported
-"always use HEAD" option for production custom-function calls (confirmed in
-`plan-get-clp-01-webapp.md`'s Fase 1.5). So this step guarantees a fresh version always
+"always use HEAD" option for production custom-function calls (see
+[`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints)).
+So this step guarantees a fresh version always
 exists after every deploy, but it deliberately does **not** update any consumer's
 pinned version pointer -- that stays a manual, human-reviewed step per consumer (Apps
 Script editor → Libraries → change version), same as picking the version in the first

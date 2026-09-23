@@ -7,7 +7,8 @@
  * docs/getting-started.md's "GET_CLP Library" section for why only
  * `exchange-rates` needs this today (it's the project GET_CLP/
  * GET_CLP_RANGE's client logic lives in -- see src/interfaces/library.js
- * and plan-get-clp-02-range-batch.md, "Punto 2"). Prints "true" or an
+ * and docs/design-notes.md, "Why GET_CLP/GET_CLP_RANGE's client code is
+ * distributed as an Apps Script Library"). Prints "true" or an
  * empty string (never an error) so scripts/push-target.sh can treat "not
  * a library" as the normal, expected case for every other target.
  *

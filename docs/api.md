@@ -121,8 +121,8 @@ the central spreadsheet) look up a single value from the `VALUES` tab as a formu
 without needing access to the spreadsheet itself. Served by a Web App deployment of
 this same `exchange-rates` project (`src/interfaces/webapp.js`'s `doGet`) -- see
 [`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
-for the deployment ID/URL and
-[`../plan-get-clp-01-webapp.md`](../plan-get-clp-01-webapp.md) for the full design rationale
+for the deployment ID/URL and [`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints)
+for the full design rationale
 (including why the *server* is a Web App and not an Apps Script Library -- custom
 functions cannot call `SpreadsheetApp.openById()`/`openByUrl()`, full stop, regardless of
 who owns what). See "Consuming from another Apps Script project" below for how the
@@ -135,7 +135,8 @@ one `doGet` entry point, there's no routing)
 **Authentication:** Required -- `key` query param, checked against the `GET_CLP_API_KEY`
 Script Property. There is no other access control: the deployment itself is reachable
 anonymously (`ANYONE_ANONYMOUS` in `src/appsscript.json`'s manifest -- see
-`plan-get-clp-01-webapp.md` Fase 0 for why that's required, not just permissive), so this
+[`design-notes.md`](design-notes.md#web-app-access-control-anonymous-reachability-plus-a-key)
+for why that's required, not just permissive), so this
 key is the *only* real gate.
 
 **Query params:**
@@ -167,10 +168,9 @@ curl "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhF
 
 ## `GET_CLP_RANGE(dates, codes)` (Web App custom function, batch)
 
-Batch counterpart to `GET_CLP`, for many cells recalculating together -- see
-[`../plan-get-clp-02-range-batch.md`](../plan-get-clp-02-range-batch.md) for the full
-diagnosis (a burst of 108+ separate `GET_CLP` calls in "(05) Payroll" competing for the
-same Web App/central sheet under load). **`GET_CLP` is not deprecated or replaced by
+Batch counterpart to `GET_CLP`, for many cells recalculating together -- originally
+motivated by a burst of 108+ separate `GET_CLP` calls in "(05) Payroll" competing for
+the same Web App/central sheet under load. **`GET_CLP` is not deprecated or replaced by
 this** -- both formulas coexist indefinitely; `GET_CLP_RANGE` only makes sense where many
 cells would otherwise recalculate at once.
 
@@ -246,10 +246,10 @@ at that one cell, nowhere else.
 `GET_CLP_RANGE` **cannot** do the same thing per row: the whole range is served by a
 *single* function call returning *one* array that Sheets spreads across many cells. If
 that one call threw for a single missing row, the platform would blank out **every**
-cell in the range, not just the missing one (confirmed in `plan-get-clp-01-webapp.md`'s
-Fase 1.5 spike) -- so `doPost`/`GET_CLP_RANGE` deliberately never throw per row, they
-return a plain string in that row's position instead (see "Piezas de diseno", point 3,
-in `plan-get-clp-02-range-batch.md`). A plain string is **not** an error value as far as
+cell in the range, not just the missing one (see
+[`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints))
+-- so `doPost`/`GET_CLP_RANGE` deliberately never throw per row, they
+return a plain string in that row's position instead. A plain string is **not** an error value as far as
 Sheets is concerned, so `IFERROR` does nothing to it -- there's no per-cell error inside
 an array result to catch; wrapping the whole `GET_CLP_RANGE(...)` call in `IFERROR`
 only ever protects against a *batch-level* failure (bad key, malformed body), never
@@ -298,7 +298,7 @@ never have to keep bumping the formula's upper bound as real rows are added (unl
 "(05) Payroll"'s bounded `$D$7:$D$60`), and the hundreds of padding rows past your data
 stay silently blank instead of showing `"Missing parameters"` on every one of them or,
 worse, tripping the batch-size cap and failing the entire formula (the original
-incident reported for "(12) MedicalRefund" -- see `plan-get-clp-02-range-batch.md`).
+incident this section describes).
 
 Caching mirrors `GET_CLP` exactly -- same `code|date` `CacheService` key (see
 "Response" above for `GET_CLP`), so a batch that overlaps with recent single `GET_CLP`
@@ -323,8 +323,8 @@ the Library's `GET_CLP`/`GET_CLP_RANGE` still call the Web App above over `UrlFe
 exactly like the earlier pasted snippet did -- see "Why the Library still calls the Web
 App" below for why that part couldn't change. Only *where the client code lives, and how
 it reaches every consumer* changed (see
-[`../plan-get-clp-02-range-batch.md`](../plan-get-clp-02-range-batch.md), "Punto 2", for
-the full decision record and the alternatives that were discarded).
+[`design-notes.md`](design-notes.md#why-get_clpget_clp_ranges-client-code-is-distributed-as-an-apps-script-library)
+for the full decision record and the alternatives that were discarded).
 
 ### Install (once per consuming Apps Script project)
 
@@ -377,8 +377,9 @@ Why this wrapper can't be skipped entirely (i.e. why you can't just write
 `=ExchangeRates.GET_CLP(...)` straight into a cell without it): Apps Script's custom
 function picker only scans **top-level functions defined in the calling project itself**
 -- a function that only exists inside an imported Library is invisible to it. This was
-confirmed during the original spike (see `plan-get-clp-01-webapp.md`'s Fase 1.5, finding
-#1) while evaluating -- and ultimately discarding -- a Library for the *server* side of
+confirmed during the original spike (see
+[`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints))
+while evaluating -- and ultimately discarding -- a Library for the *server* side of
 GET_CLP; the finding itself still holds here, just for a different piece of code.
 
 ### Updating the Library (whenever GET_CLP/GET_CLP_RANGE's logic changes)
@@ -387,8 +388,9 @@ Every `clasp push` to the `exchange-rates` target also cuts a new immutable Libr
 version automatically (see `scripts/push-target.sh` and
 [`ci.md`](ci.md#library-version-cut-get_clpget_clp_range)) -- but existing consumers stay
 pinned to whichever version they picked in step 3 above. Apps Script deliberately has no
-supported "always use HEAD" option for production custom-function calls (confirmed in
-`plan-get-clp-01-webapp.md`'s Fase 1.5, finding #2), so a fix or improvement only reaches
+supported "always use HEAD" option for production custom-function calls (see
+[`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints)),
+so a fix or improvement only reaches
 a given consumer once someone points it at the new version: Apps Script editor →
 Libraries → change the version number next to the identifier → Save. That's the entire
 update -- no code to re-paste, ever, unless the wrapper's own function *signature*
@@ -424,8 +426,9 @@ correctly falls through to `NA()` -- this is expected, not a bug to chase.
 
 Publishing `GET_CLP`/`GET_CLP_RANGE` as a Library does **not** let them read the central
 spreadsheet directly. Library code executes inside the SAME sandboxed call stack as
-whatever custom function invoked it (confirmed in `plan-get-clp-01-webapp.md`'s Fase
-1.5) -- `SpreadsheetApp.openById()`/`openByUrl()` stay forbidden regardless of whether
+whatever custom function invoked it (see
+[`design-notes.md`](design-notes.md#apps-script-custom-function-sandbox-constraints))
+-- `SpreadsheetApp.openById()`/`openByUrl()` stay forbidden regardless of whether
 the calling code lives in the consumer's own script or came from an imported Library.
 `URL Fetch` remains the one service explicitly allowed, unrestricted, in that sandbox --
 which is why `src/interfaces/library.js` still calls the Web App above over

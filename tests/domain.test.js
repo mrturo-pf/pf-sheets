@@ -612,7 +612,7 @@ describe("describeMissingRate", () => {
 // Regression coverage for the "(12) MedicalRefund" open-ended-range
 // incident: $F$4:$F sends one pair per sheet row up to the sheet's total
 // row count, so most rows past the real data are blank padding, not
-// malformed input -- see docs/api.md and plan-get-clp-02-range-batch.md.
+// malformed input -- see docs/api.md, Blank rows in an open-ended range.
 describe("classifyRangePair", () => {
   it('returns "blank" when both code and date are empty (a padding row from an open-ended range)', () => {
     expect(classifyRangePair("", "")).toBe("blank");

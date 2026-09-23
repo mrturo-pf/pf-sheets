@@ -18,8 +18,7 @@ describe("interfaces (pf-sheets)", () => {
 // Same rationale as above, applied to the Web App entry points: doGet
 // and doPost touch SpreadsheetApp/PropertiesService/ContentService/
 // CacheService directly, so they're validated end-to-end against the
-// real deployment (see plan-get-clp-01-webapp.md "Verificación final" and
-// plan-get-clp-02-range-batch.md), not with faked globals here.
+// real deployment (not with faked globals here).
 describe("interfaces/webapp (pf-sheets)", () => {
   it("exposes doGet and doPost as functions", () => {
     expect(typeof webapp.doGet).toBe("function");
@@ -30,7 +29,8 @@ describe("interfaces/webapp (pf-sheets)", () => {
 // Same rationale again, applied to the Library entry points: GET_CLP and
 // GET_CLP_RANGE touch UrlFetchApp/PropertiesService/SpreadsheetApp/
 // Utilities directly, validated end-to-end from a real consuming Apps
-// Script project (see plan-get-clp-02-range-batch.md "Punto 2").
+// Script project (see docs/design-notes.md, Why GET_CLP/GET_CLP_RANGE's
+// client code is distributed as an Apps Script Library).
 describe("interfaces/library (pf-sheets)", () => {
   it("exposes GET_CLP and GET_CLP_RANGE as functions", () => {
     expect(typeof library.GET_CLP).toBe("function");

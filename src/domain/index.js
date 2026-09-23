@@ -481,8 +481,8 @@ function findRateValue(accessor, rawCode, rawDate, timeZone) {
 }
 
 /**
- * Batch counterpart to findRateValue, for GET_CLP_RANGE (see
- * plan-get-clp-02-range-batch.md) -- resolves every (code, date) pair
+ * Batch counterpart to findRateValue, for GET_CLP_RANGE (see docs/api.md)
+ * -- resolves every (code, date) pair
  * against the same accessor/timeZone in one call. Reuses findRateValue
  * per pair: each pair is still its own independent O(log n) binary
  * search, since the real perf win of batching comes from amortizing ONE
@@ -547,8 +547,8 @@ function describeMissingRate(dateKey, todayKey) {
  * count every blank padding row against GET_CLP_RANGE_MAX_PAIRS, making
  * open-ended references fail outright on any sheet whose total row count
  * exceeds that cap regardless of how much real data it holds -- exactly
- * the incident reported for "(12) MedicalRefund" in
- * plan-get-clp-02-range-batch.md.
+ * the incident reported for "(12) MedicalRefund" -- see docs/api.md,
+ * "Blank rows in an open-ended range".
  * @param {*} rawCode
  * @param {*} rawDate
  * @returns {"blank"|"malformed"|{code: *, date: *}} "blank" when both are
