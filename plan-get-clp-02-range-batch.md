@@ -45,18 +45,53 @@ solo el redeploy + la migración real en las hojas consumidoras (fuera de este r
   después de todo `clasp push` para el target `exchange-rates` (ver Fase 5 de
   `plan-get-clp-01-webapp.md`), así que el próximo merge a `main` despliega `doPost`
   automáticamente sin tocar el pipeline.
+- **`src/interfaces/library.js`** (nuevo): `GET_CLP`/`GET_CLP_RANGE` públicas para
+  consumo vía Apps Script Library (ver "Decisión de arquitectura tomada" más abajo).
+  `GET_CLP_RANGE` ahora soporta rango O constante en `dates`/`codes` de forma
+  independiente (pedido explícito, calza con el layout real de Payroll: columnas H/K son
+  rangos reales aunque todas las celdas digan el mismo código).
+- **`scripts/resolve-is-library.js`** (nuevo, +4 tests) y `scripts/push-target.sh`:
+  cortan una versión nueva de Library (`clasp version`) después de cada push a un
+  target marcado `"isLibrary": true` en `targets.json` (hoy solo `exchange-rates`).
+- **91/91 tests en el repo**, lint limpio, cobertura sobre el umbral.
 
 ## Qué falta (requiere acceso a las hojas reales, fuera de esta sesión)
 
-1. Confirmar el layout exacto de las 2 columnas en "(05) Payroll" antes de pegar el
-   snippet ahí (aunque la firma `GET_CLP_RANGE(dates, codes)` ya está fijada y no
-   depende de ese detalle para funcionar).
-2. Pegar el snippet actualizado (`GET_CLP.gs`, con `GET_CLP_RANGE` agregada) en los
-   proyectos Apps Script de "(05) Payroll" y, si corresponde, "(12) MedicalRefund".
-3. Migrar solo las dos columnas de Payroll afectadas por la ráfaga de `GET_CLP` celda a
-   celda hacia `GET_CLP_RANGE` -- el resto de cualquier hoja sigue pudiendo usar
-   `GET_CLP` sin cambios.
-4. Validar en producción con el volumen real (108 celdas) que ya no aparece
+**Decisión de arquitectura tomada (Punto 2 -- distribución automática):**
+`GET_CLP`/`GET_CLP_RANGE` ahora se distribuyen como una **Apps Script Library**
+publicada desde el mismo proyecto `exchange-rates` (`src/interfaces/library.js`), en vez
+de pegar el snippet completo a mano en cada consumidor. Se evaluaron 3 opciones (Library
+/ este repo pasa a ser dueño del código completo de Payroll-MedicalRefund / solo detectar
+desincronización) -- se eligió Library por ser la única que resuelve "actualización
+automática" sin que este repo tenga que hacerse cargo de código ajeno que no puede ver
+(un `clasp push --force` a los proyectos de Payroll/MedicalRefund borraría cualquier otra
+macro que tengan y que este repo no ve). Detalle completo en `docs/api.md` (sección
+"Consuming GET_CLP / GET_CLP_RANGE from another Apps Script project") y
+`docs/getting-started.md`/`docs/ci.md`.
+
+Con esto, el costo de mantenimiento futuro baja mucho: arreglar un bug o mejorar el retry
+de `GET_CLP`/`GET_CLP_RANGE` ya no requiere volver a pegar código en cada consumidor --
+solo bumpear el número de versión de la Library desde el editor de Apps Script (un
+dropdown, no un paste). Lo que **sí** sigue siendo manual, una única vez por consumidor:
+
+1. Agregar la Library al proyecto de Apps Script de Payroll/MedicalRefund (Editor →
+   Libraries → pegar el script ID `1DMVavLk-uV8kSkdpLmvYCzk_7w5becIcwjOukVO09cpD8WNi2ECAK4m-`
+   → elegir versión → identificador `ExchangeRates`).
+2. Pegar el wrapper de 3 líneas por fórmula (`GET_CLP`/`GET_CLP_RANGE`, ver "Install" en
+   `docs/api.md`) -- esto sí es inevitable sin importar la opción elegida: Apps Script
+   exige que toda `@customfunction` sea top-level en el proyecto que la llama desde la
+   celda, no puede vivir solo en la Library (confirmado en el spike de la Fase 1.5 del
+   plan 01).
+3. Confirmar el layout exacto de las 2 columnas en "(05) Payroll" antes de decidir si
+   migran a `GET_CLP_RANGE(A1:A54, B1:B54)` -- **ya confirmado**: `G7:G60` usa
+   `=iferror(GET_CLP($D?,H?),)` (rango `H7:H60`, todas "USD") y `J7:J60` usa
+   `=iferror(GET_CLP($D?,K?),)` (rango `K7:K60`, todas "CLF") -- dos series
+   independientes, ambas con rango real (no literal) en la columna de código. Migran
+   directo a `=GET_CLP_RANGE($D$7:$D$60, $H$7:$H$60)` y
+   `=GET_CLP_RANGE($D$7:$D$60, $K$7:$K$60)` respectivamente.
+4. Migrar solo esas dos columnas de `GET_CLP` a `GET_CLP_RANGE` -- el resto de cualquier
+   hoja sigue pudiendo usar `GET_CLP` sin cambios.
+5. Validar en producción con el volumen real (108 celdas) que ya no aparece
    `"Unexpected response"` ni demoras de 30+ segundos.
 
 ## Problema real observado (no hipotético)

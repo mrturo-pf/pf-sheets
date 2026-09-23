@@ -102,6 +102,28 @@ reuses this same ID via `clasp deploy -i <id>` (never `clasp deploy` without
 `-i`, which would create a brand new, separate deployment/URL instead of
 updating this one).
 
+## GET_CLP Library (for other Apps Script projects to consume `GET_CLP`/`GET_CLP_RANGE`)
+
+The **same** `exchange-rates` project is also published as an Apps Script **Library**
+(`src/interfaces/library.js`) -- this is how other Apps Script projects (Payroll,
+MedicalRefund, ...) get `GET_CLP`/`GET_CLP_RANGE` without hand-pasting the full retry/
+parsing logic; see [`api.md`](api.md#consuming-get_clp--get_clp_range-from-another-apps-script-project-library)
+for the consumer-side install runbook and
+[`../plan-get-clp-02-range-batch.md`](../plan-get-clp-02-range-batch.md) ("Punto 2") for
+why a Library was chosen over hand-pasting or this repo owning consumer projects
+wholesale.
+
+| | |
+| --- | --- |
+| Library script ID | Same as the `scriptId` above: `1DMVavLk-uV8kSkdpLmvYCzk_7w5becIcwjOukVO09cpD8WNi2ECAK4m-` -- not a secret. |
+| Version management | `scripts/push-target.sh` cuts a new immutable Library version (`clasp version`) after every `clasp push` to this target (see [`ci.md`](ci.md#library-version-cut-get_clpget_clp_range)) -- automatic, no manual step here. |
+
+A Library version is immutable and consumers pin to a specific number (Apps Script has
+no supported "always use HEAD" option for production custom-function calls) -- so a new
+version existing here does **not** automatically reach any consumer; someone still has
+to bump the version pointer in each consumer's own Apps Script editor (Libraries panel)
+when they want the update. This is a deliberate, human-reviewed step, not a gap.
+
 ## Run tests
 
 ```bash

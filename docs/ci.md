@@ -206,3 +206,28 @@ that only affects the bound macro.
 pipeline—revert the offending commit, merge to `main`, and the next `clasp push` +
 `clasp deploy -i <id>` cycle serves the previous code again at the same URL. There is no
 separate "pin an old Web App version" step to remember.
+
+## Library version cut (GET_CLP/GET_CLP_RANGE)
+
+`exchange-rates` is also published as an Apps Script Library (`src/interfaces/
+library.js`) -- see [`getting-started.md`](getting-started.md#get_clp-library-for-other-apps-script-projects-to-consume-get_clpget_clp_range)
+and [`api.md`](api.md#consuming-get_clp--get_clp_range-from-another-apps-script-project-library).
+After `clasp push` (and any Web App redeploy above), `scripts/push-target.sh` runs one
+more step for any target flagged `"isLibrary": true` in `targets.json` (today only
+`exchange-rates`):
+
+```bash
+clasp version "CI: <commit sha>"
+```
+
+This cuts a new **immutable** Library version -- required because a Library reference in
+a consuming project always pins to a specific version number; there is no supported
+"always use HEAD" option for production custom-function calls (confirmed in
+`plan-get-clp-01-webapp.md`'s Fase 1.5). So this step guarantees a fresh version always
+exists after every deploy, but it deliberately does **not** update any consumer's
+pinned version pointer -- that stays a manual, human-reviewed step per consumer (Apps
+Script editor → Libraries → change version), same as picking the version in the first
+place during install.
+
+Gated by `scripts/resolve-is-library.js`, mirroring `resolve-webapp-deployment.js`'s
+pattern exactly: a target with no `isLibrary` flag silently skips this step.

@@ -123,9 +123,11 @@ this same `exchange-rates` project (`src/interfaces/webapp.js`'s `doGet`) -- see
 [`getting-started.md`](getting-started.md#get_clp-web-app-deployment-once-per-apps-script-project)
 for the deployment ID/URL and
 [`../plan-get-clp-01-webapp.md`](../plan-get-clp-01-webapp.md) for the full design rationale
-(including why this is a Web App and not an Apps Script Library -- custom functions
-cannot call `SpreadsheetApp.openById()`/`openByUrl()`, full stop, regardless of who
-owns what).
+(including why the *server* is a Web App and not an Apps Script Library -- custom
+functions cannot call `SpreadsheetApp.openById()`/`openByUrl()`, full stop, regardless of
+who owns what). See "Consuming from another Apps Script project" below for how the
+*client* side (the formula itself) is distributed -- that part **does** use a Library,
+for a different reason than the one this restriction rules out.
 
 **GET /exec** (the Web App's fixed endpoint path -- Apps Script Web Apps have exactly
 one `doGet` entry point, there's no routing)
@@ -153,200 +155,15 @@ key is the *only* real gate.
 | `Missing parameters` | `date` or `code` missing. |
 | `Not found` | No row for that exact `(code, date)` -- or, less commonly, the `VALUES` tab itself is missing (logged server-side via `console.error`, not distinguishable from a normal miss in the response body -- see `src/interfaces/webapp.js`). |
 
-There are no other status codes or JSON error bodies by design -- see "Install" below
-for how the client snippet turns this plain-text contract into either a number or a
-clean message in the calling cell.
+There are no other status codes or JSON error bodies by design -- see "Consuming from
+another Apps Script project" below for how the client turns this plain-text contract
+into either a number or a clean message in the calling cell.
 
 **Example:**
 ```bash
 curl "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec?date=2026-09-15&code=USD&key=<GET_CLP_API_KEY>"
 # => 957.53
 ```
-
-**This is not code this repo pushes anywhere.** Unlike `updateExchangeRates`/`onOpen`
-(pushed via `clasp` to every target in `targets.json`), the snippet below is meant to be
-pasted manually, once, into each *consuming* Apps Script project -- those are separate
-Google Sheets this repo doesn't own or track as a clasp target. Reusing the multi-target
-push model here would push the entire sync macro (and a second, pointless `doGet`) into
-every consumer, none of which need it -- see "Adding a new document/target" in
-[`development.md`](development.md), which exists to scale `updateExchangeRates` to more
-documents needing the *same* full sync behavior, not this.
-
-### Install (once per consuming Apps Script project)
-
-1. Open the consuming spreadsheet's Extensions → Apps Script editor.
-2. Project Settings → Script Properties → add `GET_CLP_API_KEY` with the same value
-   configured on the `exchange-rates` project (ask whoever manages it -- it's the same
-   secret documented in [`getting-started.md`](getting-started.md)). Storing it in
-   Script Properties here too (rather than hardcoding it in the snippet below) keeps
-   the same "no secrets in source" rule this repo already follows for `PF_RATES_API_KEY`
-   and `EXPORT_DRIVE_FILE_ID`.
-3. Paste this into a new script file (e.g. `GetClp.gs`):
-
-   ```javascript
-   var GET_CLP_WEB_APP_URL =
-     "https://script.google.com/macros/s/AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk/exec";
-
-   /**
-    * Looks up a CLP value from the shared financial-data spreadsheet.
-    * Usage: =GET_CLP(DATE(2026,9,15), "USD")
-    * @param {Date|string} date
-    * @param {string} code e.g. "USD", "EUR", "UF", "UTM", "IPC_CL"
-    * @return {number|string} the CLP value, or the string "Unauthorized" /
-    *   "Missing parameters" for real misconfigurations (returned as plain
-    *   text on purpose -- see the "GOOGLEFINANCE fallback" section below
-    *   for why these must NOT be silently swallowed by IFERROR).
-    * @throws {Error} "Not found" when there's no data for that (code, date)
-    *   yet -- thrown, not returned, specifically so
-    *   IFERROR(GET_CLP(...), ...) can catch just this one recoverable case.
-    *   Also throws "Unexpected response" if a burst of concurrent GET_CLP
-    *   calls trips Google's own Web App infrastructure (see the retry
-    *   helper below) three times in a row -- rare, but confirmed to happen
-    *   via the Executions log: doGet completed fine server-side every time,
-    *   yet the caller still got back Google's own generic error HTML
-    *   instead of doGet's real response.
-    * @customfunction
-    */
-   function GET_CLP(date, code) {
-     // Formatted using THIS spreadsheet's own time zone (getActiveSpreadsheet
-     // is fine here -- unlike doGet, a custom function genuinely does have
-     // an active bound spreadsheet, and this reconstructs "the calendar day
-     // the user actually typed into the cell", regardless of what time zone
-     // the central spreadsheet happens to use).
-     var dateParam =
-       date instanceof Date
-         ? Utilities.formatDate(date, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), "yyyy-MM-dd")
-         : String(date);
-
-     var apiKey = PropertiesService.getScriptProperties().getProperty("GET_CLP_API_KEY");
-     var url =
-       GET_CLP_WEB_APP_URL +
-       "?date=" + encodeURIComponent(dateParam) +
-       "&code=" + encodeURIComponent(code) +
-       "&key=" + encodeURIComponent(apiKey || "");
-
-     var text = fetchGetClpResponseWithRetries_(url);
-     var value = parseFloat(text);
-
-     if (!isNaN(value)) {
-       return value;
-     }
-     if (text === "Not found") {
-       // The ONE case worth recovering from at the formula level -- thrown
-       // (not returned as a string) so an outer IFERROR(GET_CLP(...), ...)
-       // can catch it and fall back to GOOGLEFINANCE. "Unauthorized"/
-       // "Missing parameters" return as plain text instead: those are real
-       // misconfigurations, not "no data yet".
-       throw new Error("Not found");
-     }
-     if (text === "Unauthorized" || text === "Missing parameters") {
-       return text;
-     }
-     // Neither a number nor one of doGet's own fixed strings, even after
-     // retries -- almost certainly Google's Web App redirect infrastructure
-     // itself glitching under a burst of concurrent GET_CLP calls (observed
-     // directly: many simultaneous doGet executions in the Executions log,
-     // every one "Completed" server-side, yet the caller still got back an
-     // HTML "Sorry, unable to open the file" page instead of doGet's real
-     // response -- a known Apps Script Web App flakiness pattern, not a bug
-     // in doGet). Thrown as a real error so it's catchable the same way as
-     // "Not found", instead of dumping raw HTML into the cell.
-     throw new Error("Unexpected response");
-   }
-
-   // Custom functions get killed by the platform at 30s, full stop (see
-   // plan-get-clp-01-webapp.md's Fase 1.5) -- that hard kill produces an
-   // ugly, non-catchable-by-IFERROR "Exceeded maximum execution time"
-   // error. Budgeting retries to this ceiling means GET_CLP gives up on
-   // ITS OWN terms (a clean, throwable, IFERROR-catchable error) well
-   // before Google's platform forcibly kills the whole execution.
-   var GET_CLP_MAX_RETRY_BUDGET_MILLIS_ = 25000;
-
-   /**
-    * Retries a GET_CLP Web App call up to 3 times with a short backoff,
-    * because a burst of many simultaneous GET_CLP cells recalculating at
-    * once can trip Google's own Web App redirect infrastructure (returns
-    * a generic Drive-style HTML error page even though doGet itself
-    * completed fine server-side -- confirmed via the Executions log, not
-    * guessed). A single flaky hop shouldn't surface as a broken formula.
-    *
-    * Time-budget aware on purpose: under a big enough burst, individual
-    * attempts themselves can already run several seconds long (observed
-    * directly in the Executions log). Blindly retrying 3 times on top of
-    * that risks tripping the platform's own 30s custom-function ceiling,
-    * which fails far worse (see the constant above) than just giving up
-    * a bit early with a clean thrown error.
-    * @param {string} url
-    * @return {string} the raw response body from the last attempt
-    */
-   function fetchGetClpResponseWithRetries_(url) {
-     var maxAttempts = 3;
-     var startedAt = Date.now();
-     var lastText = "";
-     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-       if (attempt > 1 && Date.now() - startedAt > GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
-         break;
-       }
-       var response = UrlFetchApp.fetch(url, { muteHttpExceptions: true });
-       lastText = response.getContentText();
-       if (isRecognizedGetClpResponse_(lastText)) {
-         return lastText;
-       }
-       if (attempt < maxAttempts && Date.now() - startedAt < GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
-         Utilities.sleep(300 * attempt); // 300ms, then 600ms
-       }
-     }
-     return lastText;
-   }
-
-   /**
-    * @param {string} text
-    * @return {boolean}
-    */
-   function isRecognizedGetClpResponse_(text) {
-     if (text === "Unauthorized" || text === "Missing parameters" || text === "Not found") {
-       return true;
-     }
-     return !isNaN(parseFloat(text));
-   }
-   ```
-
-4. Save. `=GET_CLP(DATE(2026,9,15), "USD")` should now work in any cell.
-
-### GOOGLEFINANCE fallback + `#N/A` (optional, per-cell)
-
-`GET_CLP` itself cannot call `GOOGLEFINANCE` or any other formula internally -- same
-platform restriction as the Library dead end (custom functions are read-only, cannot
-write a formula to a cell to evaluate it). The fallback has to be composed in the
-consuming **cell**, using `GET_CLP`'s `"Not found"` throw (added above) so `IFERROR`
-has something real to catch:
-
-```
-=IFERROR(IFERROR(GET_CLP(date, code), INDEX(GOOGLEFINANCE("CURRENCY:" & code & "CLP", "price", date, date), 2, 2)), NA())
-```
-
-Why it looks like this, not simpler:
-- `GOOGLEFINANCE("CURRENCY:" & code & "CLP", ...)` -- FX pairs need the `CURRENCY:` prefix
-  plus the concatenated pair (e.g. `CURRENCY:USDCLP`); the bare code (`"USD"`) is not a
-  valid symbol.
-- `INDEX(..., 2, 2)` -- `GOOGLEFINANCE` with a historical date **always** returns a
-  2-row table (a `Date`/`Close` header row plus one data row), never a bare number, even
-  for a single day (`start_date = end_date`). `INDEX` pulls out just the price cell.
-- Outer `NA()` -- the final, explicit `#N/A` when neither source has a value.
-
-**This fallback only makes sense for real currency codes** (`USD`, `EUR`, ...).
-`GOOGLEFINANCE` has no data for `UF`, `UTM`, or `IPC_CL` -- those are Chile-specific
-indices (BCCh/INE), not tradeable instruments on public markets. For those codes the
-`GOOGLEFINANCE(...)` branch will itself error out on an invalid symbol and the formula
-correctly falls through to `NA()` -- this is expected, not a bug to chase.
-
-### Why `UrlFetchApp`, not a Library call
-
-`URL Fetch` is one of the few services explicitly allowed, unrestricted, inside a
-custom function's sandbox -- see plan-get-clp-01-webapp.md's Fase 1.5. This is precisely
-what makes the Web App design work at all: `doGet` executes as a fully separate,
-unrestricted execution triggered by this HTTP call, not as part of this custom
-function's own restricted call stack.
 
 ## `GET_CLP_RANGE(dates, codes)` (Web App custom function, batch)
 
@@ -359,12 +176,19 @@ cells would otherwise recalculate at once.
 
 Instead of one HTTP request per cell, `GET_CLP_RANGE` sends every (date, code) pair in
 one request and gets every value back in one response, using Google Sheets' array
-"spill" behavior:
+"spill" behavior. `dates` and `codes` can each be **either a range (one value per row)
+or a single constant reused for every row** -- whichever matches how the consuming
+sheet is actually laid out:
 
 ```
-=GET_CLP_RANGE(A1:A54, B1:B54)
+=GET_CLP_RANGE(A1:A54, B1:B54)     -- both vary per row
+=GET_CLP_RANGE($D$7:$D$60, "USD")  -- dates vary, code is the same for every row
 ```
-instead of dragging `=GET_CLP(A1, B1)` down 54 rows.
+instead of dragging `=GET_CLP(A1, B1)` (or `=GET_CLP(D7, "USD")`) down 54 rows.
+
+At least one of `dates`/`codes` must be an actual range -- that's what tells the
+function how many rows to resolve; passing two constants isn't a batch, it's a single
+`GET_CLP` lookup, so use that directly instead.
 
 **POST /exec** (same fixed Web App endpoint path as `doGet` -- Apps Script Web Apps
 route strictly by HTTP method, `doGet` vs `doPost`, not by URL).
@@ -412,112 +236,119 @@ curl -X POST \
 # => [957.53]
 ```
 
+## Consuming `GET_CLP` / `GET_CLP_RANGE` from another Apps Script project (Library)
+
+Both formulas are consumed as an **Apps Script Library** published from this same
+`exchange-rates` project (`src/interfaces/library.js`) -- not by hand-pasting their full
+implementation into every consumer. This does **not** change how they get their data:
+the Library's `GET_CLP`/`GET_CLP_RANGE` still call the Web App above over `UrlFetchApp`,
+exactly like the earlier pasted snippet did -- see "Why the Library still calls the Web
+App" below for why that part couldn't change. Only *where the client code lives, and how
+it reaches every consumer* changed (see
+[`../plan-get-clp-02-range-batch.md`](../plan-get-clp-02-range-batch.md), "Punto 2", for
+the full decision record and the alternatives that were discarded).
+
 ### Install (once per consuming Apps Script project)
 
-Same prerequisites as `GET_CLP` (steps 1-2 in its own "Install" section above --
-`GET_CLP_API_KEY` Script Property already covers both formulas, nothing extra to
-configure). Add this function to the same `GetClp.gs` file (it reuses
-`GET_CLP_WEB_APP_URL` and `GET_CLP_MAX_RETRY_BUDGET_MILLIS_` already defined there):
+1. Open the consuming spreadsheet's Extensions → Apps Script editor.
+2. Project Settings → Script Properties → add `GET_CLP_API_KEY` with the same value
+   configured on the `exchange-rates` project (ask whoever manages it -- it's the same
+   secret documented in [`getting-started.md`](getting-started.md)). This is still
+   required with a Library: `PropertiesService.getScriptProperties()` called from
+   library code resolves to the **calling** project's own properties, not the library
+   project's -- standard Apps Script Library semantics, which is exactly what keeps
+   each consumer's own key correctly scoped.
+3. In the editor's left sidebar, next to "Libraries", click **+** → paste the script ID
+   `1DMVavLk-uV8kSkdpLmvYCzk_7w5becIcwjOukVO09cpD8WNi2ECAK4m-` (the `exchange-rates`
+   project -- see [`getting-started.md`](getting-started.md), not a secret) → Look up →
+   pick the latest version → Identifier: `ExchangeRates` (or any name -- it's whatever
+   you reference it as below) → Add.
+4. Paste this wrapper into a new script file (e.g. `GetClp.gs`) -- this is the entire
+   file, nothing else needed:
 
-```javascript
-/**
- * Batch counterpart to GET_CLP for many cells recalculating together (see
- * plan-get-clp-02-range-batch.md). Usage:
- * =GET_CLP_RANGE(A1:A54, B1:B54) -- dates and codes columns, same row
- * count -- replaces 54 separate GET_CLP formulas with one call that
- * spills its results down the column automatically.
- * @param {Array<Array<Date|string>>} dates a single-column range of dates
- * @param {Array<Array<string>>} codes a single-column range of codes,
- *   same row count as `dates`
- * @return {Array<Array<number|string>>} one row per input row, same order
- * @customfunction
- */
-function GET_CLP_RANGE(dates, codes) {
-  if (!Array.isArray(dates) || !Array.isArray(codes)) {
-    return [["Missing parameters"]];
-  }
-  if (dates.length !== codes.length) {
-    return [["Mismatched range sizes"]];
-  }
+   ```javascript
+   /**
+    * Usage: =GET_CLP(DATE(2026,9,15), "USD")
+    * @param {Date|string} date
+    * @param {string} code e.g. "USD", "EUR", "UF", "UTM", "IPC_CL"
+    * @return {number|string} the CLP value, or "Unauthorized" /
+    *   "Missing parameters" for real misconfigurations.
+    * @throws {Error} "Not found" (catchable by IFERROR) or "Unexpected
+    *   response" -- see api.md in the exchange-rates repo for details.
+    * @customfunction
+    */
+   function GET_CLP(date, code) {
+     return ExchangeRates.GET_CLP(date, code);
+   }
 
-  var timeZone = SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone();
-  var pairs = dates.map(function (row, index) {
-    var rawDate = row[0];
-    var dateParam =
-      rawDate instanceof Date ? Utilities.formatDate(rawDate, timeZone, "yyyy-MM-dd") : String(rawDate);
-    return { date: dateParam, code: String(codes[index][0]) };
-  });
+   /**
+    * Usage: =GET_CLP_RANGE(A1:A54, B1:B54) or =GET_CLP_RANGE($D$7:$D$60, "USD")
+    * @param {Array<Array<Date|string>>|Date|string} dates
+    * @param {Array<Array<string>>|string} codes
+    * @return {Array<Array<number|string>>}
+    * @customfunction
+    */
+   function GET_CLP_RANGE(dates, codes) {
+     return ExchangeRates.GET_CLP_RANGE(dates, codes);
+   }
+   ```
 
-  var apiKey = PropertiesService.getScriptProperties().getProperty("GET_CLP_API_KEY");
-  var url = GET_CLP_WEB_APP_URL + "?key=" + encodeURIComponent(apiKey || "");
+5. Save. Both formulas should now work in any cell.
 
-  var responseText = fetchGetClpRangeResponseWithRetries_(url, pairs);
-  var parsed;
-  try {
-    parsed = JSON.parse(responseText);
-  } catch (parseError) {
-    throw new Error("Unexpected response");
-  }
+Why this wrapper can't be skipped entirely (i.e. why you can't just write
+`=ExchangeRates.GET_CLP(...)` straight into a cell without it): Apps Script's custom
+function picker only scans **top-level functions defined in the calling project itself**
+-- a function that only exists inside an imported Library is invisible to it. This was
+confirmed during the original spike (see `plan-get-clp-01-webapp.md`'s Fase 1.5, finding
+#1) while evaluating -- and ultimately discarding -- a Library for the *server* side of
+GET_CLP; the finding itself still holds here, just for a different piece of code.
 
-  if (!Array.isArray(parsed)) {
-    // {"error": "..."} shape -- a batch-level failure (auth, malformed
-    // body, empty/oversized pairs), not a per-row result.
-    throw new Error((parsed && parsed.error) || "Unexpected response");
-  }
+### Updating the Library (whenever GET_CLP/GET_CLP_RANGE's logic changes)
 
-  return parsed.map(function (value) {
-    return [value];
-  });
-}
+Every `clasp push` to the `exchange-rates` target also cuts a new immutable Library
+version automatically (see `scripts/push-target.sh` and
+[`ci.md`](ci.md#library-version-cut-get_clpget_clp_range)) -- but existing consumers stay
+pinned to whichever version they picked in step 3 above. Apps Script deliberately has no
+supported "always use HEAD" option for production custom-function calls (confirmed in
+`plan-get-clp-01-webapp.md`'s Fase 1.5, finding #2), so a fix or improvement only reaches
+a given consumer once someone points it at the new version: Apps Script editor →
+Libraries → change the version number next to the identifier → Save. That's the entire
+update -- no code to re-paste, ever, unless the wrapper's own function *signature*
+changes (rare, and would be called out explicitly if it ever happens).
 
-/**
- * Same rationale/pattern as fetchGetClpResponseWithRetries_ above, adapted
- * for a POST request carrying the batch payload instead of a GET query
- * string, and "recognized" meaning "valid JSON" (a batch-level {"error"}
- * object still counts -- GET_CLP_RANGE decides what to do with it above,
- * this helper's only job is not retrying on a genuinely garbled response).
- * @param {string} url
- * @param {Array<{date: string, code: string}>} pairs
- * @return {string} the raw response body from the last attempt
- */
-function fetchGetClpRangeResponseWithRetries_(url, pairs) {
-  var maxAttempts = 3;
-  var startedAt = Date.now();
-  var lastText = "";
-  var options = {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify({ pairs: pairs }),
-    muteHttpExceptions: true,
-  };
-  for (var attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (attempt > 1 && Date.now() - startedAt > GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
-      break;
-    }
-    var response = UrlFetchApp.fetch(url, options);
-    lastText = response.getContentText();
-    if (isRecognizedGetClpRangeResponse_(lastText)) {
-      return lastText;
-    }
-    if (attempt < maxAttempts && Date.now() - startedAt < GET_CLP_MAX_RETRY_BUDGET_MILLIS_) {
-      Utilities.sleep(300 * attempt);
-    }
-  }
-  return lastText;
-}
+### GOOGLEFINANCE fallback + `#N/A` (optional, per-cell)
 
-/**
- * @param {string} text
- * @return {boolean}
- */
-function isRecognizedGetClpRangeResponse_(text) {
-  try {
-    JSON.parse(text);
-    return true;
-  } catch (parseError) {
-    return false;
-  }
-}
+`GET_CLP` itself cannot call `GOOGLEFINANCE` or any other formula internally -- custom
+functions are read-only, they cannot write a formula to a cell to evaluate it. The
+fallback has to be composed in the consuming **cell**, using `GET_CLP`'s `"Not found"`
+throw so `IFERROR` has something real to catch:
+
+```
+=IFERROR(IFERROR(GET_CLP(date, code), INDEX(GOOGLEFINANCE("CURRENCY:" & code & "CLP", "price", date, date), 2, 2)), NA())
 ```
 
-Save. `=GET_CLP_RANGE(A1:A54, B1:B54)` should now spill 54 values down the column.
+Why it looks like this, not simpler:
+- `GOOGLEFINANCE("CURRENCY:" & code & "CLP", ...)` -- FX pairs need the `CURRENCY:` prefix
+  plus the concatenated pair (e.g. `CURRENCY:USDCLP`); the bare code (`"USD"`) is not a
+  valid symbol.
+- `INDEX(..., 2, 2)` -- `GOOGLEFINANCE` with a historical date **always** returns a
+  2-row table (a `Date`/`Close` header row plus one data row), never a bare number, even
+  for a single day (`start_date = end_date`). `INDEX` pulls out just the price cell.
+- Outer `NA()` -- the final, explicit `#N/A` when neither source has a value.
+
+**This fallback only makes sense for real currency codes** (`USD`, `EUR`, ...).
+`GOOGLEFINANCE` has no data for `UF`, `UTM`, or `IPC_CL` -- those are Chile-specific
+indices (BCCh/INE), not tradeable instruments on public markets. For those codes the
+`GOOGLEFINANCE(...)` branch will itself error out on an invalid symbol and the formula
+correctly falls through to `NA()` -- this is expected, not a bug to chase.
+
+### Why the Library still calls the Web App
+
+Publishing `GET_CLP`/`GET_CLP_RANGE` as a Library does **not** let them read the central
+spreadsheet directly. Library code executes inside the SAME sandboxed call stack as
+whatever custom function invoked it (confirmed in `plan-get-clp-01-webapp.md`'s Fase
+1.5) -- `SpreadsheetApp.openById()`/`openByUrl()` stay forbidden regardless of whether
+the calling code lives in the consumer's own script or came from an imported Library.
+`URL Fetch` remains the one service explicitly allowed, unrestricted, in that sandbox --
+which is why `src/interfaces/library.js` still calls the Web App above over
+`UrlFetchApp`, exactly like the original hand-pasted snippet did.
