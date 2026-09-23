@@ -49,3 +49,21 @@ if [[ -n "${webapp_deployment_id}" ]]; then
   (cd "${repo_root}" && npx clasp deploy -i "${webapp_deployment_id}" -d "CI redeploy: ${GITHUB_SHA:-local}")
   echo "==> Web App redeployed: ${alias_name}"
 fi
+
+# Cut a new immutable Library version, if this target is published as one
+# (see targets.json's optional isLibrary flag -- today only
+# 'exchange-rates' is, for GET_CLP/GET_CLP_RANGE's client code in
+# src/interfaces/library.js -- see docs/getting-started.md's "GET_CLP
+# Library" section). A Library reference in a consuming project is always
+# pinned to a specific version number -- Apps Script has no supported
+# "always use HEAD" option for production custom-function calls (see
+# plan-get-clp-01-webapp.md's Fase 1.5) -- so `clasp push` alone does NOT
+# make new library code reachable by consumers; a fresh version has to
+# exist for someone to point a consumer at it (see
+# docs/ci.md#library-version-cut-get_clpget_clp_range).
+is_library="$(node "${repo_root}/scripts/resolve-is-library.js" "${alias_name}")"
+if [[ -n "${is_library}" ]]; then
+  echo "==> Cutting a new Library version for '${alias_name}'"
+  (cd "${repo_root}" && npx clasp version "CI: ${GITHUB_SHA:-local}")
+  echo "==> Library version cut: ${alias_name}"
+fi

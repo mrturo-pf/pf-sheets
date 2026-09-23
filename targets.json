@@ -2,6 +2,7 @@
   {
     "alias": "exchange-rates",
     "config": "clasp-targets/exchange-rates.clasp.json",
-    "webAppDeploymentId": "AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk"
+    "webAppDeploymentId": "AKfycbw4QLt1lRwNAIltLr36L3Obmdgawm2FmhFB5BfAiY2iqi5OhGR6Bi1Xr5jJXqfc0YAk",
+    "isLibrary": true
   }
 ]
