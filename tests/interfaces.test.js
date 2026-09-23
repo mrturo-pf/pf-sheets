@@ -1,5 +1,6 @@
 const interfaces = require("../src/interfaces");
 const webapp = require("../src/interfaces/webapp");
+const library = require("../src/interfaces/library");
 
 // interfaces/ is intentionally NOT exercised end-to-end here — it's the
 // one file allowed to touch the bare Apps Script globals directly (see
@@ -23,5 +24,16 @@ describe("interfaces/webapp (pf-sheets)", () => {
   it("exposes doGet and doPost as functions", () => {
     expect(typeof webapp.doGet).toBe("function");
     expect(typeof webapp.doPost).toBe("function");
+  });
+});
+
+// Same rationale again, applied to the Library entry points: GET_CLP and
+// GET_CLP_RANGE touch UrlFetchApp/PropertiesService/SpreadsheetApp/
+// Utilities directly, validated end-to-end from a real consuming Apps
+// Script project (see plan-get-clp-02-range-batch.md "Punto 2").
+describe("interfaces/library (pf-sheets)", () => {
+  it("exposes GET_CLP and GET_CLP_RANGE as functions", () => {
+    expect(typeof library.GET_CLP).toBe("function");
+    expect(typeof library.GET_CLP_RANGE).toBe("function");
   });
 });
