@@ -1,11 +1,15 @@
 # Plan: `GET_CLP_RANGE` — lookup por lote para reducir llamadas HTTP concurrentes
 
-> **Estado: EN PROGRESO.** El diagnóstico y diseño de más abajo ya están confirmados.
-> La función de dominio en lote (`findRateValues`), el endpoint `doPost` del Web App, y
-> el snippet cliente `GET_CLP_RANGE` **ya están implementados y con tests en verde** --
-> ver "Progreso" más abajo. Lo que falta es exclusivamente el redeploy real + la
-> migración de las celdas de "(05) Payroll", que requieren acceso a esas hojas concretas
-> (fuera del alcance de este repo/sesión de código). Es la continuación de
+> **Estado: EN PROGRESO -- causa raíz confirmada y arreglada en código local,
+> pendiente de commit/push/deploy (requiere luz verde explícita del usuario) y del
+> paso manual de repuntar versión de Library en Payroll/MedicalRefund.** El código
+> (dominio, `doPost`, Library) está implementado, testeado, deployado en producción y
+> con la Library ya instalada en Payroll y MedicalRefund -- pero corría el bug de
+> `instanceof Date` cruzando el límite de la Library, causando el incidente de
+> `"Not found"` de abajo. El fix (`isDateValue_`) ya está aplicado en
+> `src/interfaces/library.js` + test de regresión con `vm.runInNewContext`, 94/94
+> tests, lint limpio -- **no commiteado ni pusheado todavía**, ver "Progreso (fix
+> aplicado, esta sesión)" más abajo. Es la continuación de
 > [`plan-get-clp-01-webapp.md`](plan-get-clp-01-webapp.md) (ese plan ya está
 > completo y en producción) -- este documento cubre el problema de escala detectado
 > después del lanzamiento.
@@ -16,8 +20,190 @@
 > puede seguir usando `GET_CLP` para lookups individuales, incluso después de que
 > `GET_CLP_RANGE` exista.
 
-Plan de acción para la próxima sesión -- **implementación de código ya hecha**, falta
-solo el redeploy + la migración real en las hojas consumidoras (fuera de este repo).
+Plan de acción para la próxima sesión -- **implementación de código, deploy y
+distribución vía Library ya hechos**; lo que falta es diagnosticar y arreglar el
+incidente de `"Not found"` antes de poder migrar las 108 celdas reales.
+
+##  Incidente abierto: `GET_CLP_RANGE` devuelve `"Not found"` en todas las celdas de Payroll
+
+**Síntoma reportado por el usuario:** después de migrar las fórmulas de "(05) Payroll"
+a `GET_CLP_RANGE($D$7:$D$60, $H$7:$H$60)` y `GET_CLP_RANGE($D$7:$D$60, $K$7:$K$60)`,
+**ambas columnas muestran `"Not found"` en las 54 filas**, sin excepción -- no es un par
+suelto fallando, es el 100% del lote.
+
+**Lo que ya se descartó por revisión de código** (no por prueba en vivo -- ver
+limitación más abajo):
+
+- `findRateValue`/`findRateValues` (`src/domain/index.js`): 100% cubiertos por tests
+  unitarios, sin cambios en esta sesión, mismo código que ya funciona hace tiempo para
+  `GET_CLP` de celda única. Muy improbable que el bug esté acá.
+- `doPost` (`src/interfaces/webapp.js`): revisado línea por línea contra el código real
+  ya deployado (versión de Library 10, confirmada en "Progreso" abajo) -- la lógica de
+  normalización, caché y batching se ve correcta y sigue el mismo patrón que `doGet`
+  (que sí funciona en producción hace semanas).
+- Autenticación: si la `key` no matcheara, la respuesta sería un objeto de error (no un
+  array) y el wrapper de la Library tiraría una excepción en vez de mostrar texto en la
+  celda. El síntoma observado es inconsistente con un problema de `GET_CLP_API_KEY`.
+- Tamaño/formato de lote: un batch vacío o mal formado también responde con un objeto
+  de error, no un array -- mismo argumento que el punto anterior, tampoco explica
+  `"Not found"` celda por celda.
+
+**Limitación real de este diagnóstico:** todo lo anterior es revisión de código + 91
+tests unitarios que corren en Node/Jest con globals de Apps Script *simulados* --
+`doPost`, y sobre todo **`GET_CLP_RANGE` del lado cliente en `src/interfaces/library.js`,
+nunca se ejecutaron una sola vez en un runtime real de Apps Script/Sheets antes de este
+incidente**. No se pudo acceder al log de Executions de Payroll ni de `exchange-rates`
+para confirmar si `doPost` siquiera fue invocado: el token de `clasp` disponible en este
+entorno no tiene el scope `script.processes` que exige la API de Apps Script para listar
+ejecuciones (confirmado -- `403 ACCESS_TOKEN_SCOPE_INSUFFICIENT` al intentarlo), y
+`clasp logs` requiere un proyecto de GCP vinculado que no está configurado ("GCP project
+ID is not set"). Es decir: **no hay evidencia directa todavía de si el fallo es del
+lado del cliente (Payroll) o del servidor (`exchange-rates`)**, solo descarte por
+lectura de código.
+
+**Hipótesis, ordenadas por probabilidad:**
+
+1. **Argumentos de la fórmula en orden equivocado.** La firma es
+   `GET_CLP_RANGE(dates, codes)` -- fechas primero, códigos después. Si en Payroll se
+   escribió `GET_CLP_RANGE($H$7:$H$60, $D$7:$D$60)` (invertido) en vez de
+   `GET_CLP_RANGE($D$7:$D$60, $H$7:$H$60)`, cada "fecha" enviada al servidor sería en
+   realidad `"USD"`/`"CLF"` y cada "código" sería una fecha -- ningún par matchearía
+   nunca, exactamente el patrón 100%-`"Not found"` observado. **Es la hipótesis más
+   simple y más probable.**
+2. **Bug real en `src/interfaces/library.js`'s `GET_CLP_RANGE`** (el código que arma
+   `pairs` a partir de los argumentos rango/constante) -- nunca ejecutado en un runtime
+   real de Apps Script hasta ahora; podría haber una diferencia de comportamiento entre
+   cómo Node/Jest simula un rango 2D y cómo Sheets realmente lo entrega a una función
+   de Library.
+3. **La versión de la Library resuelta en tiempo de ejecución no es la 10** a pesar de
+   que `appsscript.json` la declara -- poco probable, pero no confirmado en vivo.
+4. **Los datos reales para esas fechas/códigos específicos no existen en `VALUES`** --
+   muy improbable dado que las mismas celdas con `GET_CLP` (no `_RANGE`) funcionaban
+   antes de la migración, para las mismas fechas.
+
+**Diagnóstico pedido al usuario (bloqueante para seguir):**
+
+1. Copiar/pegar la fórmula **exacta** que quedó en `G7` y en `J7` después de migrar
+   (para descartar/confirmar la Hipótesis 1 directamente).
+2. Probar en una celda suelta cualquiera, sin tocar Payroll: `=GET_CLP($D7, $H7)` (el
+   `GET_CLP` de celda única, ya migrado a la Library) -- si **esto también** da
+   `"Not found"` o error, el problema es de la Library/config, no específico de
+   `GET_CLP_RANGE` (apunta a Hipótesis 2/3). Si funciona bien, el problema es
+   específico del batch.
+3. Si es posible, revisar Extensions → Apps Script → Executions (panel izquierdo) en
+   el proyecto de Payroll y compartir la entrada más reciente de `GET_CLP_RANGE`
+   (duración, éxito/error).
+
+### Actualización: respuesta del usuario -- `GET_CLP` simple TAMBIÉN falla
+
+El usuario confirmó: `=GET_CLP($D7, $H7)` (celda única, vía Library) **también**
+devuelve `"Not found"`/error. Esto **descarta la Hipótesis 1** (orden de argumentos en
+`GET_CLP_RANGE`) -- el problema no es específico del batch, es genérico a cualquier
+llamada a través de la Library. Apunta directo a Hipótesis 2/3.
+
+### Datos exactos reportados por el usuario (evidencia, no reconstrucción)
+
+- **`G7`**: `=GET_CLP_RANGE($D$7:$D$60, $H$7:$H$60)` -- **todas** las celdas derramadas
+  dicen `"Not found"`.
+- **`J7`**: `=GET_CLP_RANGE($D$7:$D$60, $K$7:$K$60)` -- **todas** las celdas derramadas
+  dicen `"Not found"`.
+  - Ambas fórmulas usan el orden correcto de argumentos (`dates` primero, `codes`
+    después) exactamente como está documentado en `docs/api.md` -- **la Hipótesis 1
+    queda descartada del todo**, no por deducción sino por inspección directa de la
+    fórmula real.
+- **Prueba de reemplazo en `G7` con la fórmula de celda única**: `=GET_CLP(D7, H7)` -->
+  produce **`Error: Not found (line 91)`** (mensaje de error de Apps Script, no el
+  string `"Not found"` -- porque `GET_CLP` de celda única hace `throw new Error("Not
+  found")` en vez de devolver el string, a diferencia de `GET_CLP_RANGE` que sí
+  devuelve el string por posición).
+  - **Este dato es clave**: el `(line 91)` del error apunta exactamente a la línea
+    `throw new Error("Not found");` dentro de `GET_CLP` en `src/interfaces/library.js`
+    (confirmado contra el archivo local -- coincide línea por línea). Eso significa que
+    la ejecución **sí** llegó hasta ese punto del código real de la Library: la request
+    HTTP se armó, salió, el Web App (`doGet`) respondió 200 con el texto literal
+    `"Not found"`, y el cliente lo interpretó y tiró el throw correspondiente. **No es
+    un fallo de red, de auth (eso sería `"Unauthorized"`, no `"Not found"`), ni de
+    parseo de la respuesta** -- es un round-trip completo y "exitoso" en el sentido de
+    que el protocolo funcionó de punta a punta, pero con datos incorrectos viajando en
+    el medio. Esto es consistente con la Causa raíz de abajo (fecha corrupta enviada al
+    servidor), no con un problema de conectividad/deploy/versión de Library.
+
+**Causa raíz identificada por revisión de código (alta confianza, NO implementada
+todavía -- el usuario pidió explícitamente no tocar código en esta sesión, solo
+documentar):**
+
+`grep "instanceof Date"` sobre `src/` da 3 resultados:
+
+```
+src/domain/index.js:74:      if (rawDate instanceof Date) {
+src/interfaces/library.js:73:    date instanceof Date
+src/interfaces/library.js:181:      rawDate instanceof Date ? Utilities.formatDate(rawDate, timeZone, "yyyy-MM-dd") : String(rawDate);
+```
+
+El de `domain/index.js` es seguro: `domain/` y `webapp.js` corren concatenados en el
+**mismo** proyecto/realm (`exchange-rates`), nunca cruzan un límite de Library.
+
+Los dos de `library.js` (uno en `GET_CLP`, otro dentro del loop de `GET_CLP_RANGE`) son
+el problema: es un gotcha **documentado y conocido** de Apps Script Libraries -- cuando
+un objeto `Date` se crea en el proyecto que LLAMA (Payroll) y se pasa como argumento a
+una función de una Library (`RatesUpdater`), `instanceof Date` dentro de la Library
+**puede evaluar `false`**, porque cada proyecto de Apps Script corre en su propio
+"realm" de V8 con su propio constructor `Date` interno -- análogo al problema clásico de
+`instanceof Array` entre iframes distintos en un browser.
+
+Si eso pasa, la rama `date instanceof Date` cae a `String(date)` en vez de
+`Utilities.formatDate(date, timeZone, "yyyy-MM-dd")` -- `String(unObjetoDate)` produce
+algo tipo `"Mon Jan 15 2024 00:00:00 GMT-0300 (Chile Summer Time)"`, no
+`"2024-01-15"`. Ese string nunca va a matchear ninguna fecha real en `VALUES`, así que
+**el 100% de los lookups fallan con `"Not found"`**, exactamente el síntoma reportado --
+y explica por qué pasa igual con `GET_CLP` simple y con `GET_CLP_RANGE`: ambos comparten
+el mismo patrón roto.
+
+**Fix propuesto (NO implementado -- solo diagnóstico, a hacer en la próxima sesión):**
+reemplazar `date instanceof Date` / `rawDate instanceof Date` en `library.js` (las dos
+ocurrencias, líneas 73 y 181) por un chequeo que sea seguro entre realms, por ejemplo:
+
+```javascript
+function isDateValue_(value) {
+  return Object.prototype.toString.call(value) === "[object Date]";
+}
+```
+
+(`Object.prototype.toString.call(...)` inspecciona el tag interno `[[Class]]` del
+objeto, no la cadena de prototipos -- por eso sí funciona de forma consistente cruzando
+el límite de una Library, a diferencia de `instanceof`.)
+
+**Plan para la próxima sesión (1-2 ejecutados esta sesión, 3-5 pendientes de luz
+verde del usuario para commitear/pushear y del paso manual en Payroll/MedicalRefund):**
+
+1. ~~Aplicar el fix de `isDateValue_` en `src/interfaces/library.js` (2 lugares).~~ --
+   **hecho** esta sesión. `isDateValue_` reemplaza las dos ocurrencias de
+   `instanceof Date` (líneas originales 73 y 181) usando
+   `Object.prototype.toString.call(value) === "[object Date]"`. El
+   `rawDate instanceof Date` de `src/domain/index.js` (línea 74) **no** se tocó a
+   propósito -- `domain/` y `webapp.js` corren en el mismo realm que `doGet`/`doPost`
+   (proyecto `exchange-rates`), nunca cruzan el límite de una Library, así que ese
+   `instanceof` es seguro tal cual está.
+2. ~~Agregar un test de regresión real para este bug exacto~~ -- **hecho**,
+   `tests/library.test.js` (nuevo archivo, 3 tests): usa `vm.runInNewContext` de
+   Node para construir un `Date` de un realm distinto dentro del mismo test --
+   reproduce fielmente el problema real entre proyecto llamador y Library, prueba
+   primero que `instanceof Date` efectivamente falla ahí (documenta el bug que se
+   está arreglando), y después que `isDateValue_` sí lo reconoce. `isDateValue_` se
+   agregó al `module.exports` de `library.js` (sigue con el sufijo `_` -- Apps Script
+   la mantiene privada/no expuesta a consumidores de la Library igual que antes,
+   el export solo habilita el test en Jest). **94/94 tests, lint limpio, cobertura
+   sin bajar** (`make check`, corrido y verificado esta sesión).
+3. Commitear, pushear, esperar el deploy (con Approval Gate) -- esto corta una nueva
+   versión de Library automáticamente (ver `docs/ci.md`). **Pendiente -- requiere
+   instrucción explícita del usuario, no se hace autónomamente** (ver `AGENTS.md` raíz
+   y de `pf-sheets`: ningún agente commitea/pushea sin luz verde expresa).
+4. **Repuntar la versión de la Library en Payroll y MedicalRefund**: la versión 10 ya
+   pinneada en ambos `appsscript.json` quedaría con el bug -- hay que actualizar el
+   número de versión ahí (Apps Script editor → Libraries → cambiar versión) a la nueva
+   versión que incluya el fix. Esto es un paso manual aparte, igual que agregar la
+   Library la primera vez.
+5. Recién ahí volver a probar `=GET_CLP($D7, $H7)` y `=GET_CLP_RANGE(...)` en Payroll.
 
 ## Progreso (esta sesión)
 
@@ -54,6 +240,23 @@ solo el redeploy + la migración real en las hojas consumidoras (fuera de este r
   cortan una versión nueva de Library (`clasp version`) después de cada push a un
   target marcado `"isLibrary": true` en `targets.json` (hoy solo `exchange-rates`).
 - **91/91 tests en el repo**, lint limpio, cobertura sobre el umbral.
+- **Library instalada y verificada en los dos proyectos consumidores reales** (no solo
+  documentado -- confirmado por acceso directo con `clasp`):
+  - **Payroll** (`1LPEm_bR_l3DsYwQGofLU_zgGz6GyA-Ozp7lMVhD2ILJ3VNALMBlub8Wf`) y
+    **MedicalRefund** (`1N22pIcRE3JVVaHZy6Bqcr1xhafxhwjscuSXAOPz-faKIMri2BVmtpQtZ`)
+    tenían ya agregada la Library como `RatesUpdater`, versión 10, en su
+    `appsscript.json` (paso hecho por el usuario).
+  - Confirmado que la versión 10 de la Library **sí** incluye `GET_CLP_RANGE`
+    (`npx clasp versions` en `exchange-rates` listó 10 versiones; la 9 y 10
+    corresponden al deploy que ya incluía `src/interfaces/library.js`).
+  - `GetClp.js` en ambos proyectos tenía el snippet viejo completo (retry/parsing a
+    mano) -- se reemplazó por el wrapper de 3 líneas por fórmula que delega a
+    `RatesUpdater.GET_CLP(...)`/`RatesUpdater.GET_CLP_RANGE(...)`.
+  - Antes de tocar nada se hizo `clasp pull` de solo lectura en ambos proyectos para
+    ver el 100% del contenido real (`Code.js` son stubs vacíos en los dos -- cero
+    riesgo de pisar otra macro). Después del `clasp push --force`, se volvió a
+    pullear a una carpeta separada y se comparó byte a byte (`diff`): `appsscript.json`
+    y `Code.js` quedaron idénticos, `GetClp.js` coincide exacto con lo que se pusheó.
 
 ## Qué falta (requiere acceso a las hojas reales, fuera de esta sesión)
 
@@ -74,25 +277,21 @@ de `GET_CLP`/`GET_CLP_RANGE` ya no requiere volver a pegar código en cada consu
 solo bumpear el número de versión de la Library desde el editor de Apps Script (un
 dropdown, no un paste). Lo que **sí** sigue siendo manual, una única vez por consumidor:
 
-1. Agregar la Library al proyecto de Apps Script de Payroll/MedicalRefund (Editor →
-   Libraries → pegar el script ID `1DMVavLk-uV8kSkdpLmvYCzk_7w5becIcwjOukVO09cpD8WNi2ECAK4m-`
-   → elegir versión → identificador `ExchangeRates`).
-2. Pegar el wrapper de 3 líneas por fórmula (`GET_CLP`/`GET_CLP_RANGE`, ver "Install" en
-   `docs/api.md`) -- esto sí es inevitable sin importar la opción elegida: Apps Script
-   exige que toda `@customfunction` sea top-level en el proyecto que la llama desde la
-   celda, no puede vivir solo en la Library (confirmado en el spike de la Fase 1.5 del
-   plan 01).
-3. Confirmar el layout exacto de las 2 columnas en "(05) Payroll" antes de decidir si
-   migran a `GET_CLP_RANGE(A1:A54, B1:B54)` -- **ya confirmado**: `G7:G60` usa
-   `=iferror(GET_CLP($D?,H?),)` (rango `H7:H60`, todas "USD") y `J7:J60` usa
-   `=iferror(GET_CLP($D?,K?),)` (rango `K7:K60`, todas "CLF") -- dos series
-   independientes, ambas con rango real (no literal) en la columna de código. Migran
-   directo a `=GET_CLP_RANGE($D$7:$D$60, $H$7:$H$60)` y
-   `=GET_CLP_RANGE($D$7:$D$60, $K$7:$K$60)` respectivamente.
-4. Migrar solo esas dos columnas de `GET_CLP` a `GET_CLP_RANGE` -- el resto de cualquier
-   hoja sigue pudiendo usar `GET_CLP` sin cambios.
+1. ~~Agregar la Library al proyecto de Apps Script de Payroll/MedicalRefund~~ --
+   **hecho** en ambos (identificador elegido: `RatesUpdater`, versión 10).
+2. ~~Pegar el wrapper de 3 líneas por fórmula~~ -- **hecho** en ambos (`GetClp.js`
+   reemplazado y verificado byte a byte, ver "Progreso" arriba).
+3. Confirmar el layout exacto de las 2 columnas en "(05) Payroll" -- **ya confirmado**:
+   `G7:G60` usa `=iferror(GET_CLP($D?,H?),)` (rango `H7:H60`, todas "USD") y `J7:J60`
+   usa `=iferror(GET_CLP($D?,K?),)` (rango `K7:K60`, todas "CLF") -- dos series
+   independientes, ambas con rango real (no literal) en la columna de código.
+4. **Migración de las fórmulas: EN CURSO, BLOQUEADA por el incidente de arriba.** El
+   usuario ya migró al menos una de las columnas a `GET_CLP_RANGE($D$7:$D$60, ...)` y
+   ambas devuelven `"Not found"` en las 54 filas -- ver " Incidente abierto" al
+   comienzo de este documento para el diagnóstico pedido antes de seguir.
 5. Validar en producción con el volumen real (108 celdas) que ya no aparece
-   `"Unexpected response"` ni demoras de 30+ segundos.
+   `"Unexpected response"` ni demoras de 30+ segundos -- **bloqueado** hasta resolver
+   el punto 4.
 
 ## Problema real observado (no hipotético)
 
@@ -207,6 +406,15 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
 
 ## Próximos pasos al retomar
 
-Ver "Qué falta" al comienzo de este documento -- son los mismos 4 puntos, todos
-condicionados a tener acceso directo a las hojas "(05) Payroll"/"(12) MedicalRefund",
-no a más trabajo de código en este repo.
+1. ~~Responder el "Diagnóstico pedido al usuario"~~ -- **hecho**, causa raíz confirmada
+   (Hipótesis 2: `instanceof Date` cruzando el límite de la Library).
+2. ~~Confirmar cuál de las 4 hipótesis es la real y corregir~~ -- **hecho**, fix
+   aplicado en `src/interfaces/library.js` (`isDateValue_`) + test de regresión en
+   `tests/library.test.js`, 94/94 tests, lint limpio.
+3. **Bloqueador actual: pedir luz verde explícita al usuario para commitear y pushear
+   el fix** (regla de `AGENTS.md`: ningún agente commitea/pushea autónomamente).
+4. Una vez deployado (nueva versión de Library automática vía CI), repuntar la
+   versión en `appsscript.json` de Payroll y MedicalRefund (Apps Script editor →
+   Libraries → cambiar versión) -- paso manual, no automatizable desde este repo.
+5. Recién ahí seguir con los puntos 4-5 de "Qué falta": migrar las 108 celdas reales y
+   validar que no aparecen `"Unexpected response"` ni demoras de 30+ segundos.

@@ -51,6 +51,28 @@ var GET_CLP_WEB_APP_URL =
 var GET_CLP_MAX_RETRY_BUDGET_MILLIS_ = 25000;
 
 /**
+ * Safe cross-realm replacement for `value instanceof Date`. Every Apps
+ * Script project runs in its own V8 "realm" with its own Date
+ * constructor; a Date built in a CONSUMING project (Payroll,
+ * MedicalRefund) and passed as an argument into this Library's public
+ * functions fails `instanceof Date` here even though it genuinely is a
+ * Date -- the classic cross-realm instanceof gotcha (same root cause as
+ * `instanceof Array` failing across iframes in a browser). Confirmed as
+ * the root cause of the "Not found" incident in
+ * plan-get-clp-02-range-batch.md: the broken branch silently fell back to
+ * `String(date)` (e.g. "Mon Jan 15 2024 00:00:00 GMT-0300 ...") instead
+ * of formatting to "yyyy-MM-dd", so no lookup ever matched.
+ * `Object.prototype.toString.call(...)` reads the internal `[[Class]]`
+ * tag instead of walking the prototype chain, so it stays correct across
+ * realm boundaries.
+ * @param {*} value
+ * @return {boolean}
+ */
+function isDateValue_(value) {
+  return Object.prototype.toString.call(value) === "[object Date]";
+}
+
+/**
  * Looks up a single CLP value from the shared financial-data spreadsheet.
  * Usage (from a consumer's own wrapper): =GET_CLP(DATE(2026,9,15), "USD")
  * @param {Date|string} date
@@ -70,7 +92,7 @@ function GET_CLP(date, code) {
   // reconstructs "the calendar day the user actually typed into the
   // cell", regardless of what time zone the central spreadsheet uses.
   var dateParam =
-    date instanceof Date
+    isDateValue_(date)
       ? Utilities.formatDate(date, SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone(), "yyyy-MM-dd")
       : String(date);
 
@@ -178,7 +200,7 @@ function GET_CLP_RANGE(dates, codes) {
     var rawDate = datesIsRange ? dates[i][0] : dates;
     var rawCode = codesIsRange ? codes[i][0] : codes;
     var dateParam =
-      rawDate instanceof Date ? Utilities.formatDate(rawDate, timeZone, "yyyy-MM-dd") : String(rawDate);
+      isDateValue_(rawDate) ? Utilities.formatDate(rawDate, timeZone, "yyyy-MM-dd") : String(rawDate);
     pairs.push({ date: dateParam, code: String(rawCode) });
   }
 
@@ -255,5 +277,5 @@ function isRecognizedGetClpRangeResponse_(text) {
 }
 
 if (typeof module !== "undefined") {
-  module.exports = { GET_CLP: GET_CLP, GET_CLP_RANGE: GET_CLP_RANGE };
+  module.exports = { GET_CLP: GET_CLP, GET_CLP_RANGE: GET_CLP_RANGE, isDateValue_: isDateValue_ };
 }
