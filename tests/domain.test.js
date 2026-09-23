@@ -13,6 +13,7 @@ const {
   findFirstRowIndexAtOrAfterDate,
   findRateValue,
   findRateValues,
+  describeMissingRate,
 } = require("../src/domain");
 
 const TZ = "America/Santiago";
@@ -586,5 +587,23 @@ describe("findRateValues", () => {
 
   it("returns an empty array for an empty batch", () => {
     expect(findRateValues(accessor, [], TZ)).toEqual([]);
+  });
+});
+
+// Regression coverage for the GET_CLP_RANGE "Not found" UX request: a
+// missing (code, date) pair should render as blank for a future date
+// (nothing to publish yet) and as "Not found" for present/past dates (a
+// real data gap) -- see docs/api.md, "'Not found' vs. blank".
+describe("describeMissingRate", () => {
+  it("returns an empty string for a date strictly after today", () => {
+    expect(describeMissingRate("2026-09-24", "2026-09-23")).toBe("");
+  });
+
+  it('returns "Not found" for today (present)', () => {
+    expect(describeMissingRate("2026-09-23", "2026-09-23")).toBe("Not found");
+  });
+
+  it('returns "Not found" for a date strictly before today (past)', () => {
+    expect(describeMissingRate("2026-09-22", "2026-09-23")).toBe("Not found");
   });
 });

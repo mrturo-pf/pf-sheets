@@ -166,6 +166,11 @@ function doPost(e) {
     console.error('Sheet tab "' + VALUES_SHEET_NAME + '" was not found in the central spreadsheet.');
   }
   var accessor = sheet ? createSheetRowAccessor(sheet) : null;
+  // Same realm as domain/ (this file IS exchange-rates, never crosses a
+  // Library boundary) -- passing a real Date into normalizeDateKey here
+  // is safe, unlike library.js's isDateValue_ situation (see
+  // plan-get-clp-02-range-batch.md).
+  var todayKey = normalizeDateKey(new Date(), timeZone);
 
   var normalizedPairs = pairs.map(function (pair) {
     var rawCode = pair && pair.code;
@@ -200,7 +205,7 @@ function doPost(e) {
     resolvedValues.forEach(function (value, i) {
       var index = missIndexes[i];
       if (value === null) {
-        results[index] = "Not found";
+        results[index] = describeMissingRate(missPairs[i].date, todayKey);
         return;
       }
       results[index] = value;

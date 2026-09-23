@@ -210,17 +210,59 @@ cache miss.
 **Response:** always `200`, `Content-Type: application/json`.
 
 - **Success:** a JSON array, same length and order as the request's `pairs`. Each
-  element is independently either a bare number (successful lookup) or one of `GET_CLP`'s
-  own fixed strings, `"Not found"` or `"Missing parameters"` -- one bad/missing pair never
-  fails the whole batch:
+  element is independently a bare number (successful lookup), `""` (a future date with
+  no match -- see "Not found vs. blank" below), `"Not found"` (a present/past date with
+  no match), or `"Missing parameters"` -- one bad/missing pair never fails the whole
+  batch:
   ```json
-  [957.53, "Not found", 36000.12]
+  [957.53, "", "Not found", 36000.12]
   ```
 - **Request-level failure** (bad/missing `key`, unparsable body, empty or oversized
-  `pairs`): a JSON object instead of an array, since there's no per-pair result to give:
+  `pairs`, or the `VALUES` tab itself missing): a JSON object instead of an array, since
+  there's no per-pair result to give:
   ```json
   { "error": "Unauthorized" }
   ```
+
+### "Not found" vs. blank ("") -- and why IFERROR doesn't apply here
+
+`GET_CLP` throws `Error: Not found` -- a genuine per-cell error, because each
+`=GET_CLP(...)` formula is its own independent custom-function call. That's exactly
+what makes `=IFERROR(GET_CLP(...), "")` work: `IFERROR` intercepts a real thrown error
+at that one cell, nowhere else.
+
+`GET_CLP_RANGE` **cannot** do the same thing per row: the whole range is served by a
+*single* function call returning *one* array that Sheets spreads across many cells. If
+that one call threw for a single missing row, the platform would blank out **every**
+cell in the range, not just the missing one (confirmed in `plan-get-clp-01-webapp.md`'s
+Fase 1.5 spike) -- so `doPost`/`GET_CLP_RANGE` deliberately never throw per row, they
+return a plain string in that row's position instead (see "Piezas de diseno", point 3,
+in `plan-get-clp-02-range-batch.md`). A plain string is **not** an error value as far as
+Sheets is concerned, so `IFERROR` does nothing to it -- there's no per-cell error inside
+an array result to catch; wrapping the whole `GET_CLP_RANGE(...)` call in `IFERROR`
+only ever protects against a *batch-level* failure (bad key, malformed body), never
+against one row's `"Not found"`.
+
+Given that, `GET_CLP_RANGE` resolves a missing (code, date) pair to one of two plain
+strings, decided server-side by comparing the pair's date against "today" in the
+central spreadsheet's own time zone (`describeMissingRate` in `src/domain/index.js`):
+
+- **Future date, no match:** `""` (blank cell) -- there's genuinely no exchange rate to
+  publish yet; not a data problem worth a visible message.
+- **Present or past date, no match:** `"Not found"` -- a real gap in `VALUES` worth
+  surfacing, same wording `GET_CLP` throws.
+
+This means most consumers don't need any cell-level wrapping at all: blank cells for
+future rows and an explicit `"Not found"` for a genuine data gap is already the
+intended, final display. If a consumer wants to also blank out the `"Not found"` case
+cosmetically, that has to be a **second, separate formula/column** doing a plain `IF`
+comparison against the literal text (not `IFERROR`, since there's no error to catch):
+```
+=ARRAYFORMULA(IF(A1:A54="Not found", "", A1:A54))
+```
+where `A1:A54` is itself the spilled output of a `GET_CLP_RANGE(...)` formula elsewhere
+-- this avoids calling `GET_CLP_RANGE` (and re-paying its HTTP batch) a second time just
+to reformat its own output.
 
 Caching mirrors `GET_CLP` exactly -- same `code|date` `CacheService` key (see
 "Response" above for `GET_CLP`), so a batch that overlaps with recent single `GET_CLP`

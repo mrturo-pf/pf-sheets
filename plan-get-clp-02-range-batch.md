@@ -1,15 +1,12 @@
 # Plan: `GET_CLP_RANGE` — lookup por lote para reducir llamadas HTTP concurrentes
 
-> **Estado: EN PROGRESO -- causa raíz confirmada y arreglada en código local,
-> pendiente de commit/push/deploy (requiere luz verde explícita del usuario) y del
-> paso manual de repuntar versión de Library en Payroll/MedicalRefund.** El código
-> (dominio, `doPost`, Library) está implementado, testeado, deployado en producción y
-> con la Library ya instalada en Payroll y MedicalRefund -- pero corría el bug de
-> `instanceof Date` cruzando el límite de la Library, causando el incidente de
-> `"Not found"` de abajo. El fix (`isDateValue_`) ya está aplicado en
-> `src/interfaces/library.js` + test de regresión con `vm.runInNewContext`, 94/94
-> tests, lint limpio -- **no commiteado ni pusheado todavía**, ver "Progreso (fix
-> aplicado, esta sesión)" más abajo. Es la continuación de
+> **Estado: INCIDENTE RESUELTO Y VERIFICADO EN PRODUCCIÓN por el usuario.** El fix de
+> `isDateValue_` (versión 12 de la Library) resolvió el `"Not found"` al 100% -- tanto
+> `GET_CLP` como `GET_CLP_RANGE` vuelven a resolver valores reales en Payroll. Detrás de
+> eso surgió una pregunta de UX legítima (no un bug): `GET_CLP_RANGE` no puede usar
+> `IFERROR` por celda como `GET_CLP` -- ver " `describeMissingRate`: UX de
+> `"Not found"` en `GET_CLP_RANGE`" más abajo para el porqué y el fix aplicado (fecha
+> futura -> celda vacía, presente/pasada -> `"Not found"`). Es la continuación de
 > [`plan-get-clp-01-webapp.md`](plan-get-clp-01-webapp.md) (ese plan ya está
 > completo y en producción) -- este documento cubre el problema de escala detectado
 > después del lanzamiento.
@@ -204,6 +201,65 @@ verde del usuario para commitear/pushear y del paso manual en Payroll/MedicalRef
    versión que incluya el fix. Esto es un paso manual aparte, igual que agregar la
    Library la primera vez.
 5. Recién ahí volver a probar `=GET_CLP($D7, $H7)` y `=GET_CLP_RANGE(...)` en Payroll.
+
+## `describeMissingRate`: UX de `"Not found"` en `GET_CLP_RANGE`
+
+Después de verificar en producción que el fix de `isDateValue_` resolvió el incidente
+(el usuario confirmó valores reales en Payroll), surgió una pregunta legítima de UX,
+no un bug nuevo: **`IFERROR` no sirve para controlar `"Not found"` por celda en
+`GET_CLP_RANGE`**, a diferencia de `GET_CLP`.
+
+**Por qué no aplica `IFERROR` en `GET_CLP_RANGE`:** `GET_CLP` lanza (`throw`) un error
+real por celda porque cada `=GET_CLP(...)` es su propia invocación independiente de
+custom function -- eso es justo lo que permite que `IFERROR` la intercepte. Pero
+`GET_CLP_RANGE` sirve TODO el rango con una única invocación que devuelve un único
+array -- si esa invocación tirara una excepción por una sola fila faltante, la
+plataforma vaciaría TODAS las celdas del rango, no solo la que falta (confirmado en el
+spike de la Fase 1.5 de `plan-get-clp-01-webapp.md`). Por eso `doPost`/`GET_CLP_RANGE`
+deliberadamente nunca tiran por fila -- devuelven un string plano en esa posición (ver
+"Piezas de diseño", punto 3, más abajo). Un string plano **no es un valor de error**
+para Sheets, así que `IFERROR` no hace nada con él: no hay ningún error por celda
+adentro del array que atrapar -- envolver toda la llamada `GET_CLP_RANGE(...)` en
+`IFERROR` solo protege contra una falla a nivel de **lote completo** (key inválida,
+body mal formado), nunca contra el `"Not found"` de una fila puntual. Sí, confirmado:
+el `"Not found"` aparece solo en la celda específica del par que falló (nunca tira
+abajo el resto del lote -- eso ya estaba así diseñado desde el principio, ver "Piezas de
+diseño" punto 3), pero al ser texto plano y no un error real, no hay forma de
+capturarlo con `IFERROR` a nivel de esa celda individual.
+
+**Fix aplicado (pedido explícito del usuario):** en vez de devolver siempre
+`"Not found"`, `doPost` ahora decide entre dos strings comparando la fecha del par
+contra "hoy" en el timezone del spreadsheet central:
+
+- **Fecha futura, sin match:** `""` (celda vacía) -- todavía no existe ese tipo de
+  cambio para publicar, no es un problema de datos que valga la pena mostrar.
+- **Fecha presente/pasada, sin match:** `"Not found"` -- un gap real en `VALUES`, sí
+  vale la pena mostrarlo.
+
+Implementado como `describeMissingRate(dateKey, todayKey)` en `src/domain/index.js`
+(pura, comparando los dos "YYYY-MM-DD" como strings -- ordenan lexicográficamente
+igual que cronológicamente, sin necesidad de volver a parsear a `Date`), con `today`
+calculado una vez en `doPost` vía `normalizeDateKey(new Date(), timeZone)` -- seguro
+porque `webapp.js` y `domain/` corren en el mismo realm (`exchange-rates`), nunca
+cruzan el límite de la Library, a diferencia del bug de `isDateValue_` de más arriba.
+La rama de `doPost` donde falta la hoja `VALUES` por completo (fallo de
+infraestructura, no de datos) se dejó sin tocar -- sigue devolviendo `"Not found"`
+para todo el lote sin importar la fecha, a propósito: es un error real del sistema,
+no un "todavía no hay dato para esa fecha futura".
+
+`GET_CLP` (celda única) **no se tocó** -- sigue lanzando `Error: Not found` igual que
+siempre, el usuario confirmó explícitamente que ese comportamiento ya funciona bien
+con `IFERROR` y no quiere cambiarlo.
+
+Si un consumidor quiere ADEMáS ocultar visualmente el `"Not found"` de
+`GET_CLP_RANGE` (además de ya tener las fechas futuras en blanco), tiene que ser una
+fórmula/columna separada con `IF` comparando el texto literal (no `IFERROR`, no hay
+error que atrapar) -- documentado con el ejemplo exacto en `docs/api.md`, sección
+"'Not found' vs. blank".
+
+**Tests:** 3 casos nuevos para `describeMissingRate` en `tests/domain.test.js`
+(futuro, hoy/presente, pasado) -- 97/97 tests en el repo, lint limpio, cobertura
+100% líneas/statements/funciones sin bajar.
 
 ## Progreso (esta sesión)
 
@@ -410,11 +466,17 @@ en vez de arrastrar `=GET_CLP(A1,B1)` 54 veces hacia abajo.
    (Hipótesis 2: `instanceof Date` cruzando el límite de la Library).
 2. ~~Confirmar cuál de las 4 hipótesis es la real y corregir~~ -- **hecho**, fix
    aplicado en `src/interfaces/library.js` (`isDateValue_`) + test de regresión en
-   `tests/library.test.js`, 94/94 tests, lint limpio.
-3. **Bloqueador actual: pedir luz verde explícita al usuario para commitear y pushear
-   el fix** (regla de `AGENTS.md`: ningún agente commitea/pushea autónomamente).
-4. Una vez deployado (nueva versión de Library automática vía CI), repuntar la
-   versión en `appsscript.json` de Payroll y MedicalRefund (Apps Script editor →
-   Libraries → cambiar versión) -- paso manual, no automatizable desde este repo.
-5. Recién ahí seguir con los puntos 4-5 de "Qué falta": migrar las 108 celdas reales y
-   validar que no aparecen `"Unexpected response"` ni demoras de 30+ segundos.
+   `tests/library.test.js`.
+3. ~~Commitear, pushear, deploy~~ -- **hecho**, commit `d237796`, pipeline verde de
+   punta a punta, Library versión 12 cortada.
+4. ~~Repuntar versión en Payroll/MedicalRefund~~ -- **hecho**, usuario confirmó que
+   ambas fórmulas (`GET_CLP` y `GET_CLP_RANGE`) ya resuelven valores reales en
+   Payroll. **Incidente cerrado.**
+5. ~~UX de `"Not found"` en `GET_CLP_RANGE`~~ -- **hecho esta sesión**: fix
+   `describeMissingRate` (blank para fecha futura, `"Not found"` para
+   presente/pasada), documentado en `docs/api.md`, 97/97 tests, lint limpio.
+   **Pendiente**: luz verde explícita del usuario para commitear/pushear este
+   cambio (mismo `AGENTS.md`, ningún agente commitea sin instrucción expresa) y,
+   una vez deployado, que el usuario confirme en Payroll que las fechas futuras
+   ahora aparecen en blanco y las pasadas/presentes sin match siguen diciendo
+   `"Not found"`.

@@ -508,6 +508,33 @@ function findRateValues(accessor, pairs, timeZone) {
   });
 }
 
+/**
+ * Decides what GET_CLP_RANGE should show for a pair that resolved to no
+ * match in VALUES -- "" (blank cell) for a future date, since there's
+ * genuinely no exchange rate to publish yet (not a data problem worth
+ * flagging), or the "Not found" message for a present/past date, a real
+ * gap in VALUES worth surfacing. See docs/api.md, "GET_CLP_RANGE and
+ * future dates", for why this only applies to GET_CLP_RANGE and not
+ * GET_CLP: GET_CLP throws per cell (its own top-level custom-function
+ * call), so IFERROR already handles the future-date case fine at the
+ * formula level -- GET_CLP_RANGE's whole batch is ONE function call
+ * returning one array, so a thrown error would blank out every cell in
+ * the range instead of just the missing one, and IFERROR can only wrap
+ * the entire call, not a single cell inside its result.
+ *
+ * Comparing the two "YYYY-MM-DD" keys as plain strings (no re-parsing
+ * back into Date objects) is intentional and safe: ISO-formatted date
+ * keys sort lexicographically in exactly the same order as
+ * chronologically.
+ * @param {string} dateKey e.g. "2026-09-23" (already normalized)
+ * @param {string} todayKey e.g. "2026-09-23" (already normalized, same
+ *   timeZone as dateKey -- see normalizeDateKey)
+ * @returns {string} "" for a future date, "Not found" otherwise
+ */
+function describeMissingRate(dateKey, todayKey) {
+  return dateKey > todayKey ? "" : "Not found";
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
     normalizeDateKey: normalizeDateKey,
@@ -524,5 +551,6 @@ if (typeof module !== "undefined") {
     findFirstRowIndexAtOrAfterDate: findFirstRowIndexAtOrAfterDate,
     findRateValue: findRateValue,
     findRateValues: findRateValues,
+    describeMissingRate: describeMissingRate,
   };
 }
