@@ -7,6 +7,7 @@
 
 install:
 	npm install
+	git config core.hooksPath .githooks
 
 lint:
 	npm run lint
