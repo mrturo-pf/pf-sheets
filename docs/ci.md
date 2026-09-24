@@ -28,8 +28,8 @@ Push/merge to main
 
 ## npm registry: `package-lock.json` must resolve to the public registry
 
-`.npmrc` points `registry` at Walmart's internal Artifactory npm mirror
-(`npm.ci.artifacts.walmart.com`) — needed **locally**, on the corporate
+`.npmrc` points `registry` at Corporative's internal Artifactory npm mirror
+(`npm.ci.artifacts.corporative.com`) — needed **locally**, on the corporate
 network/VPN, where the public npm registry can return `407 Proxy
 Authentication Required` without it. GitHub-hosted runners (`ubuntu-latest`)
 are the opposite: public internet only, no route to that internal host.
@@ -38,8 +38,8 @@ The first real run of this pipeline failed on that mismatch, but not in the
 obvious way. `npm ci` (unlike `npm install`) **ignores the configured
 registry for packages that already have a `resolved` URL in the lockfile** —
 it fetches that literal URL. Since `package-lock.json` had been generated
-locally against the Walmart mirror, every single entry's `resolved` field
-pointed at `npm.ci.artifacts.walmart.com`. Setting
+locally against the Corporative mirror, every single entry's `resolved` field
+pointed at `npm.ci.artifacts.corporative.com`. Setting
 `NPM_CONFIG_REGISTRY=https://registry.npmjs.org` at the workflow level (the
 first fix attempted) changed nothing — `npm ci` never even looked at it. The
 unreachable-host connection attempts hung until a known npm bug (`Exit
@@ -56,7 +56,7 @@ still sets `NPM_CONFIG_REGISTRY` at the workflow level as defense-in-depth
 lockfile is the actual source of truth `npm ci` reads from.
 
 **Gotcha for future `npm install`/`npm update`:** running them normally
-resolves through whatever `.npmrc` currently points at (the Walmart mirror),
+resolves through whatever `.npmrc` currently points at (the Corporative mirror),
 which silently reintroduces internal-mirror URLs into the lockfile for just
 the touched packages and reproduces this exact CI failure on the next push.
 Always force the public registry when the lockfile is going to change:
