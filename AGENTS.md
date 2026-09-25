@@ -94,6 +94,20 @@ for the full model. In short:
   standard ephemeral GitHub Actions job already covered by the ecosystem's existing
   usage. See [`docs/ci.md`](docs/ci.md).
 
+## Documentation and Postman collection must track reality
+
+- [`docs/api.md`](docs/api.md) must describe the real behavior of the
+  `GET_CLP`/`GET_CLP_RANGE` Web App endpoints (`doGet`/`doPost` in
+  `src/interfaces/webapp.js`) — any change to query params, response shape, or error
+  strings requires updating `docs/api.md` in the **same change**, not "later".
+- These endpoints are also mirrored in the shared Postman collection at the ecosystem
+  root: `pf-base/postman/pf-ecosystem.postman_collection.json` (the
+  `pf_sheets_webapp_url`/`pf_sheets_api_key` collection variables — pf-sheets has no
+  local/gcp environment split, one Web App deployment covers both). Update that
+  collection too in the same change when practical — see `pf-base/postman/README.md`
+  for the sync mechanics and `pf-base/AGENTS.md` for the ecosystem-wide version of
+  this rule.
+
 ## Development commands
 
 See [`docs/development.md`](docs/development.md) for the full workflow. Quick reference:
