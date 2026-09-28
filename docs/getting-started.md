@@ -92,15 +92,15 @@ it's recorded here purely so it doesn't only live in one person's browser histor
 | Who has access | Anyone, including anonymous requests (`ANYONE_ANONYMOUS` in the manifest) -- access control is enforced by the `key` query param, not by this setting; see [`design-notes.md`](design-notes.md#web-app-access-control-anonymous-reachability-plus-a-key) |
 
 Neither value is a secret -- an Apps Script deployment ID/URL grants nothing by
-itself, since `doGet` (once implemented) still requires `GET_CLP_API_KEY`. The
+itself, since `doGet`/`doPost` (see [`api.md`](api.md)) require `GET_CLP_API_KEY`. The
 real secret is that Script Property.
 
-This deployment currently serves no code (`doGet` doesn't exist in `src/`
-yet) -- hitting the URL above returns Google's generic "Script function not
-found: doGet" error until that lands. Redeploying after future code changes
-reuses this same ID via `clasp deploy -i <id>` (never `clasp deploy` without
-`-i`, which would create a brand new, separate deployment/URL instead of
-updating this one).
+`doGet`/`doPost` are implemented in `src/interfaces/webapp.js` (see
+[`api.md`](api.md) for the full request/response contract). CI's
+`scripts/push-target.sh` runs `clasp deploy -i <id>` automatically after every
+`clasp push` to this target (see [`ci.md`](ci.md#web-app-redeploys-get_clp)), reusing
+this same deployment/URL -- so the live URL above serves whatever code last landed on
+`main`, with no manual redeploy step required.
 
 ## GET_CLP Library (for other Apps Script projects to consume `GET_CLP`/`GET_CLP_RANGE`)
 
