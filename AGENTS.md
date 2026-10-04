@@ -94,7 +94,12 @@ for the full model. In short:
   standard ephemeral GitHub Actions job already covered by the ecosystem's existing
   usage. See [`docs/ci.md`](docs/ci.md).
 
-## GitHub CLI prerequisite
+## CLI policy
+
+Do not implement, add, restore, or expand any CLI command in `pf-sheets`. Use the
+supported Apps Script interfaces and existing automation instead. Any exception
+requires explicit user approval first.
+
 
 Before any interaction with GitHub using `gh`, including read-only commands, execute
 `unset-proxies` first:
