@@ -94,7 +94,29 @@ for the full model. In short:
   standard ephemeral GitHub Actions job already covered by the ecosystem's existing
   usage. See [`docs/ci.md`](docs/ci.md).
 
-## Documentation and Postman collection must track reality
+## GitHub CLI prerequisite
+
+Before any interaction with GitHub using `gh`, including read-only commands, execute
+`unset-proxies` first:
+
+```bash
+unset-proxies
+```
+
+The alias is defined in `~/.zshrc` as:
+
+```bash
+alias unset-proxies="source $HOME/Documents/scripts/unset_proxies.sh"
+```
+
+If aliases are unavailable in the current shell, run:
+
+```bash
+source "$HOME/Documents/scripts/unset_proxies.sh"
+```
+
+Only then run `gh`. This applies to every `gh` command in this repository.
+
 
 - [`docs/api.md`](docs/api.md) must describe the real behavior of the
   `GET_CLP`/`GET_CLP_RANGE` Web App endpoints (`doGet`/`doPost` in
