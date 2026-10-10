@@ -33,5 +33,5 @@ login, and the first local push.
 | [`docs/getting-started.md`](docs/getting-started.md) | Installation, `clasp` auth, first local run |
 | [`docs/development.md`](docs/development.md) | Code layout, testing, adding a new document/target |
 | [`docs/ci.md`](docs/ci.md) | CI/CD pipeline, auth secret rotation, rollback |
-| [`docs/api.md`](docs/api.md) | What the macro does, CSV contract with pf-rates |
+| [`docs/api.md`](docs/api.md) | Apps Script Web App endpoints (`GET_CLP`, `GET_CLP_RANGE`) and the pf-rates export contract |
 | [`AGENTS.md`](AGENTS.md) | AI agent reference: architecture, code style, design principles |
