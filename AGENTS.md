@@ -94,11 +94,15 @@ for the full model. In short:
   standard ephemeral GitHub Actions job already covered by the ecosystem's existing
   usage. See [`docs/ci.md`](docs/ci.md).
 
+## Test-driven development
+
+Use TDD for behavioral changes. Develop domain and infrastructure behavior with test-first Jest tests, using Outside-In or ATDD when a feature changes an observable macro or HTTP contract. Use BDD Given/When/Then scenarios only when they improve communication of business behavior.
+
+Keep domain tests pure, infrastructure tests focused on injected fakes, and interface validation as smoke tests or real Apps Script execution where bare Apps Script globals are required. Documentation-only, formatting-only, and mechanical refactor changes do not require new tests but must run applicable checks.
+
 ## CLI policy
 
-Do not implement, add, restore, or expand any CLI command in `pf-sheets`. Use the
-supported Apps Script interfaces and existing automation instead. Any exception
-requires explicit user approval first.
+Do not implement, add, restore, or expand any product-facing CLI command in `pf-sheets`. Existing development, deployment, and automation commands such as `make`, `clasp`, and repository scripts may still be used unless explicitly prohibited. Use the supported Apps Script interfaces and existing automation instead. Any exception requires explicit user approval first.
 
 
 Before any interaction with GitHub using `gh`, including read-only commands, execute
@@ -124,7 +128,7 @@ Only then run `gh`. This applies to every `gh` command in this repository.
 
 
 - [`docs/api.md`](docs/api.md) must describe the real behavior of the
-  `GET_CLP`/`GET_CLP_RANGE` Web App endpoints (`doGet`/`doPost` in
+  `GET_CLP`/`GET_CLP_RANGE` Apps Script Web App HTTP endpoints (`doGet`/`doPost` in
   `src/interfaces/webapp.js`) — any change to query params, response shape, or error
   strings requires updating `docs/api.md` in the **same change**, not "later".
 - These endpoints are also mirrored in the shared Postman collection at the ecosystem
@@ -180,6 +184,7 @@ Quick reference:
 ## Database
 
 None — this repo has no database of its own. It calls `pf-rates` over HTTP
-(`POST /exports/financial-data`) and writes only to the Google Sheet grid (`VALUES` tab); `pf-rates`
-remains the schema owner for the underlying exchange-rate and economic-index data (see
-[`pf-db`](../pf-db) for the real source of truth).
+(`POST /exports/financial-data`) and writes only to the Google Sheet grid (`VALUES` tab).
+`pf-db` remains the schema and migration owner for the underlying exchange-rate and
+economic-index data; `pf-rates` owns the corresponding application domain and HTTP API
+(see [`pf-db`](../pf-db) for the real source of truth).
