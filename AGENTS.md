@@ -4,6 +4,12 @@ Google Apps Script (bound to a Google Sheet) source, versioned in Git and deploy
 `clasp`. Not a FastAPI microservice — this is glue code that syncs
 [`pf-rates`](../pf-rates) exchange-rate data into a spreadsheet.
 
+## Scope
+
+This file governs implementation, testing, documentation, and operations inside
+`pf-sheets`. Ecosystem ownership boundaries and cross-repository coordination are defined
+in the root [`AGENTS.md`](../../AGENTS.md). This file owns the Apps Script-specific details.
+
 ## Purpose
 
 Replaces the previous workflow (editing directly in script.google.com) with: develop
