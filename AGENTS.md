@@ -2,7 +2,7 @@
 
 Google Apps Script (bound to a Google Sheet) source, versioned in Git and deployed via
 `clasp`. Not a FastAPI microservice — this is glue code that syncs
-[`pf-rates`](../pf-rates) exchange-rate data into a spreadsheet.
+[`pf-rates`](https://github.com/mrturo-pf/pf-rates) exchange-rate data into a spreadsheet.
 
 ## Scope
 
@@ -193,4 +193,4 @@ None — this repo has no database of its own. It calls `pf-rates` over HTTP
 (`POST /exports/financial-data`) and writes only to the Google Sheet grid (`VALUES` tab).
 `pf-db` remains the schema and migration owner for the underlying exchange-rate and
 economic-index data; `pf-rates` owns the corresponding application domain and HTTP API
-(see [`pf-db`](../pf-db) for the real source of truth).
+(see [`pf-db`](https://github.com/mrturo-pf/pf-db) for the real source of truth).

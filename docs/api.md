@@ -9,10 +9,10 @@ name keeps working, even though it now syncs the `VALUES` tab from
 the combined export instead of exchange rates directly.
 
 1. Calls `POST {PF_RATES_BASE_URL}/exports/financial-data` on
-   [`pf-rates`](../../pf-rates) with `{ lookback_days, forward_days }`, authenticated
+   [`pf-rates`](https://github.com/mrturo-pf/pf-rates) with `{ lookback_days, forward_days }`, authenticated
    via the `PF_RATES_API_KEY` Script Property. This is the **combined**
    export (exchange rates + economic indices in one CSV) -- see
-   [`pf-rates/docs/api.md`](../../pf-rates/docs/api.md) for the endpoint contract.
+   [`pf-rates/docs/api.md`](https://github.com/mrturo-pf/pf-rates/blob/main/docs/api.md) for the endpoint contract.
 2. Reads the resulting CSV from Google Drive (`EXPORT_DRIVE_FILE_ID` Script Property).
 3. Converts every row of the CSV to a legacy-shaped row set (pure, see
    `buildValuesCsvRows` in `src/domain/`) -- every `code` pf-rates
@@ -67,7 +67,7 @@ Economic-index rows are already expanded to one row per calendar day
 the `VALUES` tab.** This matters because `series_type` is `pf-rates`'
 *internal* classification of how it resolves a value, not a "currency vs.
 economic index" split a human would expect. Concretely (see
-[`pf-rates/src/rates/shared/constants.py`](../../pf-rates/src/rates/shared/constants.py)):
+[`pf-rates/src/rates/shared/constants.py`](https://github.com/mrturo-pf/pf-rates/blob/main/src/rates/shared/constants.py)):
 
 | Code | `series_type` in this CSV |
 | --- | --- |
@@ -88,7 +88,7 @@ Rows with too few columns (structurally malformed) are still skipped and
 their line numbers logged, same "skip and count" behavior
 `computeUpsertPlan` already uses for malformed rows.
 
-See [`pf-rates/docs/api.md`](../../pf-rates/docs/api.md) for the authoritative contract
+See [`pf-rates/docs/api.md`](https://github.com/mrturo-pf/pf-rates/blob/main/docs/api.md) for the authoritative contract
 of the export endpoint.
 
 ## Code aliases
