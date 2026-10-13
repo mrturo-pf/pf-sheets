@@ -1,5 +1,7 @@
 # What the macro does
 
+> Error classification and sanitized evidence follow the [IMP-006 error baseline and adoption checklist](https://github.com/mrturo-pf/pf-improvements/blob/main/improvements/IMP-006-ecosystem-http-error-baseline/adoption-release-checklist.md).
+
 ## `updateExchangeRates()`
 
 Entry point, implemented in `src/interfaces/`. Bound to the "Rate Values →
