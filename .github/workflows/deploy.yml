@@ -21,7 +21,7 @@
 #
 #   3. Create the "production" GitHub environment (Settings -> Environments
 #      -> New environment -> name it "production") and enable "Required
-#      reviewers". The gate-with-approval job pauses there.
+#      The merge to protected main is the release approval; deployment runs automatically.
 #
 #   4. (Optional) MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD /
 #      MAIL_FROM / MAIL_TO secrets, if you want the notify jobs to actually
@@ -81,17 +81,9 @@ jobs:
       - id: read
         run: echo "aliases=$(jq -c '[.[].alias]' targets.json)" >> "$GITHUB_OUTPUT"
 
-  gate-with-approval:
-    name: Approval Gate
-    needs: resolve-targets
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - run: echo "Approved -- proceeding to deploy."
-
   deploy:
     name: Deploy (${{ matrix.alias }})
-    needs: [resolve-targets, gate-with-approval]
+    needs: resolve-targets
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -117,7 +109,7 @@ jobs:
 
   notify-failure:
     name: Notify -- Failure
-    needs: [test, resolve-targets, gate-with-approval, deploy]
+    needs: [test, resolve-targets, deploy]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
@@ -138,8 +130,7 @@ jobs:
             Job results:
             - Test & Lint: ${{ needs.test.result }}
             - Resolve targets.json: ${{ needs.resolve-targets.result }}
-            - Approval Gate: ${{ needs.gate-with-approval.result }}
-            - Deploy (clasp push, per target): ${{ needs.deploy.result }}
+            - Deploy: ${{ needs.deploy.result }}
 
             Details:
             - Branch: ${{ github.ref_name }}

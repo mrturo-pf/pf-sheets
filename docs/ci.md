@@ -11,9 +11,6 @@ Push/merge to main
 [test]  npm ci → eslint → jest
    │
    ▼
-[gate-with-approval]  pause on the `production` GitHub environment
-   │
-   ▼
 [deploy]
    1. checkout
    2. setup-node
@@ -24,6 +21,9 @@ Push/merge to main
    │
    ▼
 [notify-success]
+
+The merge to the protected `main` branch is the release approval. No additional
+manual production approval gate is used.
 ```
 
 ## npm registry: `package-lock.json` must resolve to the public registry
@@ -198,10 +198,9 @@ change the URL every consumer sheet is hardcoded to call). The ID comes from
 `scripts/resolve-webapp-deployment.js`; a target with no such field silently skips this
 step — not every target needs a Web App (today only `exchange-rates` does).
 
-This still goes through the exact same `Approval Gate` as the `clasp push` step — there
-is no separate/lighter approval path for Web App redeploys, since they expand the
-public-facing surface of the system just as much as (arguably more than) a code push
-that only affects the bound macro.
+This deploys directly after a successful merge to protected `main`; the merge is the
+release approval and there is no separate manual approval path for Web App redeploys.
+
 
 **Rollback for the Web App specifically:** same mechanism as the rest of this
 pipeline—revert the offending commit, merge to `main`, and the next `clasp push` +
