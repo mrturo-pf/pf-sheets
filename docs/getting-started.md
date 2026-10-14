@@ -130,12 +130,14 @@ when they want the update. This is a deliberate, human-reviewed step, not a gap.
 make check   # lint + jest
 ```
 
-## Push manually (development targets only)
+## Push manually (operator recovery only)
 
 ```bash
 make push ALIAS=exchange-rates
 ```
 
-This command updates a configured development Apps Script target directly. The
-production target is deployed by CI after a pull request is merged into the
-protected `main` branch; do not push production changes directly.
+`exchange-rates` is currently the production Apps Script target. This command
+pushes directly to production, may redeploy its Web App, and may cut a Library
+version. Do not use it for normal development. The normal release path is a
+pull request followed by a merge to protected `main`, after which CI deploys
+automatically.

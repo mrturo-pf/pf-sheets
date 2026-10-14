@@ -173,7 +173,7 @@ rollback here).
 
 Quick reference:
 
-- **Trigger:** push to `main` (after manual approval via the `production` GitHub
+- **Trigger:** push to `main` after a pull request merge; deployment runs automatically
   environment).
 - **Deploy:** `clasp push` for every target, plus `clasp deploy -i <id>` for any
   target that has a `webAppDeploymentId` configured in `targets.json` (today: only

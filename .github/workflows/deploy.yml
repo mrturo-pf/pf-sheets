@@ -19,9 +19,8 @@
 #      secret CLASP_CREDENTIALS (Settings -> Secrets and variables ->
 #      Actions -> New repository secret).
 #
-#   3. Create the "production" GitHub environment (Settings -> Environments
-#      -> New environment -> name it "production") and enable "Required
-#      The merge to protected main is the release approval; deployment runs automatically.
+#   3. The merge to protected `main` is the release approval; deployment runs
+#      automatically after the PR is merged.
 #
 #   4. (Optional) MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD /
 #      MAIL_FROM / MAIL_TO secrets, if you want the notify jobs to actually
@@ -166,7 +165,7 @@ jobs:
             - Branch: ${{ github.ref_name }}
             - Commit: ${{ github.sha }}
             - Author: ${{ github.actor }}
-            - Approval: Manual (production environment gate)
+            - Release approval: merge to protected main
 
             View details:
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
