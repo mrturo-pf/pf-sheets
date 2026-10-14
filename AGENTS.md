@@ -10,7 +10,15 @@ This file governs implementation, testing, documentation, and operations inside
 `pf-sheets`. Ecosystem ownership boundaries and cross-repository coordination are defined
 in the root [`AGENTS.md`](../../AGENTS.md). This file owns the Apps Script-specific details.
 
-## Purpose
+## Repository contribution workflow
+
+Work on a dedicated branch and submit every change through a pull request targeting
+`main`. Direct pushes, force-pushes, and deletion of `main` are blocked. This
+single-maintainer repository does not currently require an additional approval,
+but all review conversations must be resolved before merge. Run the documented
+test and lint checks before merging; a merge to `main` is the release input for
+the Apps Script deployment workflow.
+
 
 Replaces the previous workflow (editing directly in script.google.com) with: develop
 locally → push via CI on merge to `main`. The result stays a macro the user runs
