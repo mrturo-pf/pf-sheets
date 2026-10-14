@@ -10,16 +10,15 @@ self-contained instead.
 
 **Trigger:** push to `main`, pull requests targeting `main`.
 
-A 6-job pipeline (jobs 2-6 only run on push to `main`, not on PRs):
+A 5-job pipeline (only Test & Lint runs on pull requests):
 
 | # | Job | What it does |
 |---|---|---|
 | 1 | **Test & Lint** | `npm ci` → eslint → `jest --coverage` |
-| 2 | **Resolve targets.json** | Reads `targets.json`, exposes the list of aliases as a matrix for job 4 |
-| 3 | **Approval Gate** | Manual approval via the `production` GitHub environment (required reviewers), same pattern as `pf-rates`/`pf-payroll` |
-| 4 | **Deploy (matrix)** | One run per target alias: restores `CLASP_CREDENTIALS` to a repo-relative `.clasprc.json`, then `scripts/push-target.sh <alias>` (swaps in that target's `.clasp.json` and runs `clasp push`) |
-| 5 | **Notify — Failure** | Emails on failure of any job above (push to `main` only). No-ops if `MAIL_*` secrets aren't set |
-| 6 | **Notify — Success** | Emails only after Deploy succeeds for every target (push to `main` only). Same no-op behavior |
+| 2 | **Resolve targets.json** | Reads `targets.json`, exposes the list of aliases as a matrix for deployment |
+| 3 | **Deploy (matrix)** | One run per target alias: restores `CLASP_CREDENTIALS` to a repo-relative `.clasprc.json`, then `scripts/push-target.sh <alias>` (swaps in that target's `.clasp.json` and runs `clasp push`) |
+| 4 | **Notify — Failure** | Emails on deployment failure (push to `main` only). No-ops if `MAIL_*` secrets aren't set |
+| 5 | **Notify — Success** | Emails only after Deploy succeeds for every target (push to `main` only). Same no-op behavior |
 
 There is no build/image/scan step — the entire "deploy" is `clasp push` overwriting the
 Apps Script project's HEAD. See [`../../docs/ci.md`](../../docs/ci.md) for the full
@@ -28,18 +27,15 @@ authentication story (including why `clasp` is pinned to an exact version) and
 for how adding a new target document only touches `targets.json`/`clasp-targets/` —
 never this workflow.
 
+There is no separate manual production approval gate. The merge to protected
+`main` is the release approval; deployment runs automatically after the merge.
+
 ## Required GitHub Secrets
 
 | Secret | Purpose |
 |---|---|
 | `CLASP_CREDENTIALS` | Content of a clasp 3.x `.clasprc.json`, generated once via the interactive login documented in `docs/ci.md`. Restored to a repo-relative file per job run, never written to `$HOME`, never logged. |
 | `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_TO` | (Optional) SMTP config for the Notify jobs — same convention as `pf-rates`/`pf-payroll`. If unset, the email step fails silently (`continue-on-error: true`) without failing the pipeline. |
-
-## Manual Approval Setup (one-time, GitHub UI)
-
-1. Settings → Environments → New environment → name it `production`.
-2. Enable "Required reviewers" and add yourself or your team.
-3. The **Approval Gate** job pauses there; deploy only runs after approval.
 
 ## Rotating `CLASP_CREDENTIALS`
 

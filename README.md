@@ -21,10 +21,16 @@ editor, with no version control, no review, and no repeatable deploy path. This 
 replaces that with a normal local-development workflow — only how the code gets
 written and shipped changed, not what the macro does.
 
-## Quick start
+## Contribution workflow
+
+Create a dedicated branch, run the documented tests and lint checks, and open a
+pull request targeting `main`. The protected `main` branch blocks direct pushes,
+force-pushes, and deletion. Merging to `main` is the release input for the Apps
+Script deployment workflow.
+
 
 See [`docs/getting-started.md`](docs/getting-started.md) for installation, `clasp`
-login, and the first local push.
+login, and the first local push to a development target.
 
 ## Documentation
 
