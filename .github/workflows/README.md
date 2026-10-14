@@ -10,13 +10,13 @@ self-contained instead.
 
 **Trigger:** push to `main`, pull requests targeting `main`.
 
-A 5-job pipeline (only Test & Lint runs on pull requests):
+A 5-job pipeline (only **Test & lint** runs on pull requests):
 
 | # | Job | What it does |
 |---|---|---|
-| 1 | **Test & Lint** | `npm ci` → eslint → `jest --coverage` |
-| 2 | **Resolve targets.json** | Reads `targets.json`, exposes the list of aliases as a matrix for deployment |
-| 3 | **Deploy (matrix)** | One run per target alias: restores `CLASP_CREDENTIALS` to a repo-relative `.clasprc.json`, then `scripts/push-target.sh <alias>` (swaps in that target's `.clasp.json` and runs `clasp push`) |
+| 1 | **Test & lint** | `npm ci` → eslint → `jest --coverage` |
+| 2 | **Resolve Apps Script deployment targets** | Reads `targets.json`, exposes the list of aliases as a matrix for deployment |
+| 3 | **Deploy Apps Script targets (matrix)** | One run per target alias: restores `CLASP_CREDENTIALS` and pushes the target |
 | 4 | **Notify — Failure** | Emails on deployment failure (push to `main` only). No-ops if `MAIL_*` secrets aren't set |
 | 5 | **Notify — Success** | Emails only after Deploy succeeds for every target (push to `main` only). Same no-op behavior |
 
