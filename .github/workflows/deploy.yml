@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 2
+          fetch-depth: 0
       - id: classify
         env:
           BEFORE_SHA: ${{ github.event.before }}
@@ -72,7 +72,14 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${EVENT_NAME}" != "push" ]; then echo "docs_only=false" >> "$GITHUB_OUTPUT"; exit 0; fi
-          files=$(git diff --name-only "${BEFORE_SHA}" "${HEAD_SHA}")
+          if git rev-parse --verify "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
+            files=$(git diff --name-only "${BEFORE_SHA}" "${HEAD_SHA}")
+          elif git rev-parse --verify "${HEAD_SHA}^" >/dev/null 2>&1; then
+            files=$(git diff --name-only "${HEAD_SHA}^" "${HEAD_SHA}")
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           non_docs=$(printf '%s\n' "${files}" | grep -Ev '\.(md|mdx|txt|rst|adoc)$' || true)
           if [ -n "${files}" ] && [ -z "${non_docs}" ]; then echo "docs_only=true" >> "$GITHUB_OUTPUT"; else echo "docs_only=false" >> "$GITHUB_OUTPUT"; fi
 
@@ -105,6 +112,9 @@ jobs:
 
   deploy:
     name: Deploy Apps Script targets (${{ matrix.alias }})
+    concurrency:
+      group: deploy-pf-sheets-production
+      cancel-in-progress: false
     needs: resolve-targets
     runs-on: ubuntu-latest
     strategy:
@@ -131,7 +141,7 @@ jobs:
 
   notify-failure:
     name: Notify deployment failure
-    needs: [test, resolve-targets, deploy]
+    needs: [test, resolve-targets, deploy, changes]
     if: failure() && github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
