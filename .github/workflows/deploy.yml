@@ -77,6 +77,7 @@ jobs:
           if [ -n "${files}" ] && [ -z "${non_docs}" ]; then echo "docs_only=true" >> "$GITHUB_OUTPUT"; else echo "docs_only=false" >> "$GITHUB_OUTPUT"; fi
 
   test:
+    name: Test & lint
     needs: changes
     if: github.event_name != 'push' || needs.changes.outputs.docs_only != 'true'
     runs-on: ubuntu-latest
