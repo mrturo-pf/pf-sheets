@@ -74,13 +74,16 @@ jobs:
           if [ "${EVENT_NAME}" != "push" ]; then echo "docs_only=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           if git rev-parse --verify "${BEFORE_SHA}^{commit}" >/dev/null 2>&1; then
             files=$(git diff --name-only "${BEFORE_SHA}" "${HEAD_SHA}")
-          elif git rev-parse --verify "${HEAD_SHA}^" >/dev/null 2>&1; then
-            files=$(git diff --name-only "${HEAD_SHA}^" "${HEAD_SHA}")
           else
             echo "docs_only=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          non_docs=$(printf '%s\n' "${files}" | grep -Ev '\.(md|mdx|txt|rst|adoc)$' || true)
+          non_docs=$(while IFS= read -r file; do
+            case "${file}" in
+              *.md|*.mdx|*.rst|*.adoc|docs/*.txt|documentation/*.txt) ;;
+              *) printf '%s\n' "${file}" ;;
+            esac
+          done <<< "${files}")
           if [ -n "${files}" ] && [ -z "${non_docs}" ]; then echo "docs_only=true" >> "$GITHUB_OUTPUT"; else echo "docs_only=false" >> "$GITHUB_OUTPUT"; fi
 
   test:
