@@ -116,7 +116,7 @@ jobs:
   deploy:
     name: Deploy Apps Script targets (${{ matrix.alias }})
     concurrency:
-      group: deploy-pf-sheets-production
+      group: deploy-pf-sheets-production-${{ matrix.alias }}
       cancel-in-progress: false
     needs: resolve-targets
     runs-on: ubuntu-latest
