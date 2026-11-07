@@ -5,7 +5,7 @@ const {
   readExistingRows,
   writeRows,
   getActiveSpreadsheet,
-  showAlert,
+  showSyncFailure,
   getGetClpApiKey,
   createSheetRowAccessor,
   getCachedRateValue,
@@ -133,22 +133,25 @@ describe("writeRows", () => {
   });
 });
 
-describe("getActiveSpreadsheet / showAlert", () => {
+describe("getActiveSpreadsheet / showSyncFailure", () => {
   it("delegates to the injected SpreadsheetApp", () => {
     const fakeSpreadsheet = { id: "sheet-1" };
     const fakeSpreadsheetApp = { getActiveSpreadsheet: () => fakeSpreadsheet };
     expect(getActiveSpreadsheet(fakeSpreadsheetApp)).toBe(fakeSpreadsheet);
   });
 
-  it("shows an alert via SpreadsheetApp.getUi()", () => {
-    const alertCalls = [];
-    const fakeSpreadsheetApp = {
-      getUi: () => ({ alert: (message) => alertCalls.push(message) }),
+  it("shows a toast without requiring SpreadsheetApp.getUi()", () => {
+    const toastCalls = [];
+    const fakeSpreadsheet = {
+      toast: (...args) => toastCalls.push(args),
     };
+    const consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
 
-    showAlert(fakeSpreadsheetApp, "something went wrong");
+    showSyncFailure(fakeSpreadsheet, "something went wrong");
 
-    expect(alertCalls).toEqual(["something went wrong"]);
+    expect(toastCalls).toEqual([["something went wrong", "Synchronization Failed", 10]]);
+    expect(consoleError).toHaveBeenCalledWith("something went wrong");
+    consoleError.mockRestore();
   });
 });
 
