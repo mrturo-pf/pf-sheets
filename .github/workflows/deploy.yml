@@ -24,7 +24,7 @@
 #
 #   4. (Optional) MAIL_SERVER / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD /
 #      MAIL_FROM / MAIL_TO secrets, if you want the notify jobs to actually
-#      send email (same convention as pf-rates/pf-payroll). If these are not
+#      send email (same convention as pf-rates/pf-svc-income). If these are not
 #      set, the notify steps no-op instead of failing the pipeline.
 #
 # Required GitHub Secrets:

@@ -1,7 +1,7 @@
 # GitHub Actions Workflows
 
 This directory contains the CI/CD workflow for `pf-sheets`. Unlike `pf-rates` and
-`pf-payroll`, this is **not** a thin caller into `pf-common`'s reusable workflows —
+`pf-svc-income`, this is **not** a thin caller into `pf-common`'s reusable workflows —
 those are 100% Docker/Cloud Run and don't apply to an Apps Script project pushed via
 `clasp` (there's no container, no Cloud Run service, no Cloud SQL). This workflow is
 self-contained instead.
@@ -35,7 +35,7 @@ There is no separate manual production approval gate. The merge to protected
 | Secret | Purpose |
 |---|---|
 | `CLASP_CREDENTIALS` | Content of a clasp 3.x `.clasprc.json`, generated once via the interactive login documented in `docs/ci.md`. Restored to a repo-relative file per job run, never written to `$HOME`, never logged. |
-| `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_TO` | (Optional) SMTP config for the Notify jobs — same convention as `pf-rates`/`pf-payroll`. If unset, the email step fails silently (`continue-on-error: true`) without failing the pipeline. |
+| `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_FROM`, `MAIL_TO` | (Optional) SMTP config for the Notify jobs — same convention as `pf-rates`/`pf-svc-income`. If unset, the email step fails silently (`continue-on-error: true`) without failing the pipeline. |
 
 ## Rotating `CLASP_CREDENTIALS`
 

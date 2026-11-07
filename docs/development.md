@@ -101,5 +101,5 @@ actually diverges, not the whole repo.
 
 Not yet configured (nothing enforces lint/test locally before commit today) — this
 mirrors the state of a brand-new repo. Add a `pre-commit` hook here the same way
-`pf-rates`/`pf-payroll` do (`git config core.hooksPath .githooks`) once the team wants
+`pf-rates`/`pf-svc-income` do (`git config core.hooksPath .githooks`) once the team wants
 that friction.
