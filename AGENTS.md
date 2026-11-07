@@ -28,7 +28,7 @@ the execution model.
 ## Architecture
 
 Google Apps Script has no real module system and no ports/DTOs, but the same
-domain-vs-I/O separation used in `pf-rates`/`pf-payroll` still applies, adapted:
+domain-vs-I/O separation used in `pf-rates`/`pf-svc-income` still applies, adapted:
 
 ```
 src/

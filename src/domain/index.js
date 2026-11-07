@@ -4,7 +4,7 @@
  * Script globals (SpreadsheetApp, DriveApp, UrlFetchApp,
  * PropertiesService, Utilities) — that's what keeps this layer
  * unit-testable with plain Jest/Node, mirroring the `domain/` boundary
- * used in pf-rates/pf-payroll.
+ * used in pf-rates/pf-svc-income.
  *
  * Files under src/ are pushed as-is into Apps Script by `clasp`, which has
  * no `module`/`require`. The guarded `module.exports` at the bottom is a
