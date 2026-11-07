@@ -99,7 +99,9 @@ for the full model. In short:
 - Apply DRY, SOLID, Clean Code — avoid god functions; the original macro was a single
   ~250-line function and was split into small, focused, pure pieces during migration.
 - No silent fallbacks: if the CSV is missing required columns or the sheet tab doesn't
-  exist, fail loudly (`SpreadsheetApp.getUi().alert(...)`), same as today.
+  exist, fail loudly via `console.error(...)` and `Spreadsheet.toast(...)`. Do not call
+  `SpreadsheetApp.getUi()` from synchronization code because time-driven triggers have
+  no UI context.
 - Secrets (the `pf-rates` API key, the Drive `fileId`) never live in source — they come
   from `PropertiesService.getScriptProperties()`, set once manually per Apps Script
   project (see [`docs/getting-started.md`](docs/getting-started.md)).

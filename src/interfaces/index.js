@@ -43,8 +43,7 @@ function syncSheetTab(spreadsheet, sheetName, legacyCsvRows) {
   var sheet = spreadsheet.getSheetByName(sheetName);
   if (!sheet) {
     var notFoundMessage = 'Sheet tab "' + sheetName + '" was not found in this spreadsheet.';
-    console.error(notFoundMessage);
-    showAlert(SpreadsheetApp, notFoundMessage);
+    showSyncFailure(spreadsheet, notFoundMessage);
     return null;
   }
 
@@ -123,6 +122,7 @@ function updateExchangeRates() {
   }
 
   // Step 2: read + parse the combined CSV from Drive.
+  var spreadsheet = getActiveSpreadsheet(SpreadsheetApp);
   var rawCsvRows;
   try {
     rawCsvRows = fetchCsvRows(DriveApp, Utilities, config.driveFileId);
@@ -130,14 +130,14 @@ function updateExchangeRates() {
   } catch (err) {
     var fileErrorMessage = "Failed to access or parse CSV from Drive: " + err.message;
     console.error(fileErrorMessage);
-    showAlert(SpreadsheetApp, fileErrorMessage);
+    showSyncFailure(spreadsheet, fileErrorMessage);
     return;
   }
 
   if (!rawCsvRows || rawCsvRows.length <= 1) {
     var emptyMessage = "The CSV file does not contain any data rows.";
     console.warn(emptyMessage);
-    showAlert(SpreadsheetApp, emptyMessage);
+    showSyncFailure(spreadsheet, emptyMessage);
     return;
   }
 
@@ -150,7 +150,7 @@ function updateExchangeRates() {
     var missingColumnsMessage =
       "CSV is missing one or more required columns ('series_type', 'code', 'period_date', 'value').";
     console.error(missingColumnsMessage);
-    showAlert(SpreadsheetApp, missingColumnsMessage);
+    showSyncFailure(spreadsheet, missingColumnsMessage);
     return;
   }
   if (extraction.skippedRowNumbers.length > 0) {
@@ -164,7 +164,6 @@ function updateExchangeRates() {
 
   // Step 4: locate the VALUES sheet tab and upsert it (pure planning
   // logic shared via syncSheetTab -- see above).
-  var spreadsheet = getActiveSpreadsheet(SpreadsheetApp);
   var valuesSummary = syncSheetTab(spreadsheet, VALUES_SHEET_NAME, extraction.valuesCsvRows);
   if (!valuesSummary) {
     return;

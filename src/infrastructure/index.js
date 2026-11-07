@@ -104,11 +104,17 @@ function getActiveSpreadsheet(spreadsheetApp) {
 }
 
 /**
- * @param {GoogleAppsScript.Spreadsheet.SpreadsheetApp} spreadsheetApp
+ * Reports a synchronization failure without requiring a spreadsheet UI.
+ * Time-driven Apps Script executions have no UI context, so
+ * `SpreadsheetApp.getUi()` throws there. Spreadsheet toasts are available
+ * to both manual and trigger-driven executions and the message is also
+ * logged for Cloud Logging.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} spreadsheet
  * @param {string} message
  */
-function showAlert(spreadsheetApp, message) {
-  spreadsheetApp.getUi().alert(message);
+function showSyncFailure(spreadsheet, message) {
+  console.error(message);
+  spreadsheet.toast(message, "Synchronization Failed", 10);
 }
 
 /**
@@ -191,7 +197,7 @@ if (typeof module !== "undefined") {
     readExistingRows: readExistingRows,
     writeRows: writeRows,
     getActiveSpreadsheet: getActiveSpreadsheet,
-    showAlert: showAlert,
+    showSyncFailure: showSyncFailure,
     getGetClpApiKey: getGetClpApiKey,
     createSheetRowAccessor: createSheetRowAccessor,
     getCachedRateValue: getCachedRateValue,
