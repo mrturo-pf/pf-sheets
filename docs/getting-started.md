@@ -63,6 +63,10 @@ and set:
 | `EXPORT_DRIVE_FILE_ID` | the Google Drive file ID of the exported **combined** CSV (`financial-data.csv`, from `POST /exports/financial-data`) |
 | `GET_CLP_API_KEY` | shared secret required as the `key` query param on the `GET_CLP` Web App endpoint (see "GET_CLP Web App deployment" below and [`api.md`](api.md)) |
 
+When migrating an existing Apps Script project, copy the existing rates API key to
+`PF_REFERENCE_API_KEY` before deploying this version. The old property name is not
+used as a fallback, so the migration must be completed before the next deployment.
+
 These replace the values that were previously hardcoded in source. See
 [`api.md`](api.md) for how the code reads them.
 
