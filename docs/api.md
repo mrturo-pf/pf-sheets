@@ -12,7 +12,7 @@ the combined export instead of exchange rates directly.
 
 1. Calls `POST {PF_RATES_BASE_URL}/exports/financial-data` on
    [`pf-rates`](https://github.com/mrturo-pf/pf-rates) with `{ lookback_days, forward_days }`, authenticated
-   via the `PF_RATES_API_KEY` Script Property. This is the **combined**
+   via the `PF_REFERENCE_API_KEY` Script Property. This is the **combined**
    export (exchange rates + economic indices in one CSV) -- see
    [`pf-rates/docs/api.md`](https://github.com/mrturo-pf/pf-rates/blob/main/docs/api.md) for the endpoint contract.
 2. Reads the resulting CSV from Google Drive (`EXPORT_DRIVE_FILE_ID` Script Property).
