@@ -59,7 +59,7 @@ and set:
 
 | Property | Value |
 | --- | --- |
-| `PF_RATES_API_KEY` | the `X-API-Key` used to call `pf-rates`'s export endpoint |
+| `PF_REFERENCE_API_KEY` | the `X-API-Key` used to call `pf-rates`'s export endpoint |
 | `EXPORT_DRIVE_FILE_ID` | the Google Drive file ID of the exported **combined** CSV (`financial-data.csv`, from `POST /exports/financial-data`) |
 | `GET_CLP_API_KEY` | shared secret required as the `key` query param on the `GET_CLP` Web App endpoint (see "GET_CLP Web App deployment" below and [`api.md`](api.md)) |
 

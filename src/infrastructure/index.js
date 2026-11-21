@@ -19,7 +19,7 @@ function getConfig(propertiesService) {
   var properties = propertiesService.getScriptProperties();
   return {
     apiBaseUrl: properties.getProperty("PF_RATES_BASE_URL"),
-    apiKey: properties.getProperty("PF_RATES_API_KEY"),
+    apiKey: properties.getProperty("PF_REFERENCE_API_KEY"),
     driveFileId: properties.getProperty("EXPORT_DRIVE_FILE_ID"),
   };
 }
