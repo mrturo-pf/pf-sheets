@@ -8,7 +8,7 @@ script.google.com web editor.
 
 This repo owns the **bound Apps Script project** attached to the exchange-rates Google
 Sheet: a macro (`updateExchangeRates`) that triggers a CSV export from
-[`pf-rates`](https://github.com/mrturo-pf/pf-rates), reads the resulting file from Google Drive, and performs an
+[`pf-svc-reference`](https://github.com/mrturo-pf/pf-svc-reference), reads the resulting file from Google Drive, and performs an
 incremental upsert into the sheet's `VALUES` tab.
 
 - Development happens **locally**, in this repo — not in the Apps Script web editor.
@@ -39,5 +39,5 @@ login, and the first local push to a development target.
 | [`docs/getting-started.md`](docs/getting-started.md) | Installation, `clasp` auth, first local run |
 | [`docs/development.md`](docs/development.md) | Code layout, testing, adding a new document/target |
 | [`docs/ci.md`](docs/ci.md) | CI/CD pipeline, auth secret rotation, rollback |
-| [`docs/api.md`](docs/api.md) | Apps Script Web App endpoints (`GET_CLP`, `GET_CLP_RANGE`) and the pf-rates export contract |
+| [`docs/api.md`](docs/api.md) | Apps Script Web App endpoints (`GET_CLP`, `GET_CLP_RANGE`) and the pf-svc-reference export contract |
 | [`AGENTS.md`](AGENTS.md) | AI agent reference: architecture, code style, design principles |

@@ -76,9 +76,9 @@ function syncSheetTab(spreadsheet, sheetName, legacyCsvRows) {
 }
 
 /**
- * Synchronizes financial data: triggers the pf-rates combined export,
+ * Synchronizes financial data: triggers the pf-svc-reference combined export,
  * reads the resulting CSV from Drive regardless of that call's outcome,
- * converts every row of it (every code pf-rates exports, regardless of
+ * converts every row of it (every code pf-svc-reference exports, regardless of
  * its own EXCHANGE_RATE/ECONOMIC_INDEX classification -- see
  * buildValuesCsvRows), and performs an incremental upsert into the
  * VALUES sheet tab. See docs/api.md for the full behavior contract.
@@ -98,7 +98,7 @@ function updateExchangeRates() {
       '"'
   );
 
-  // Step 1: trigger the pf-rates combined export -- best-effort. Step 3
+  // Step 1: trigger the pf-svc-reference combined export -- best-effort. Step 3
   // reads whatever CSV Drive currently has regardless of this call's outcome.
   var apiStatusSummary = "";
   try {

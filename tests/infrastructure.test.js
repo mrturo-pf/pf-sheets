@@ -15,7 +15,7 @@ const {
 describe("getConfig", () => {
   it("reads all three properties from the injected PropertiesService", () => {
     const store = {
-      PF_REFERENCE_BASE_URL: "https://pf-rates.example.com",
+      PF_REFERENCE_BASE_URL: "https://pf-svc-reference.example.com",
       PF_REFERENCE_API_KEY: "secret-key",
       EXPORT_DRIVE_FILE_ID: "drive-file-id",
     };
@@ -26,7 +26,7 @@ describe("getConfig", () => {
     };
 
     expect(getConfig(fakePropertiesService)).toEqual({
-      apiBaseUrl: "https://pf-rates.example.com",
+      apiBaseUrl: "https://pf-svc-reference.example.com",
       apiKey: "secret-key",
       driveFileId: "drive-file-id",
     });
@@ -48,13 +48,13 @@ describe("triggerFinancialDataExport", () => {
 
     const result = triggerFinancialDataExport(
       fakeUrlFetchApp,
-      { apiBaseUrl: "https://pf-rates.example.com", apiKey: "secret-key" },
+      { apiBaseUrl: "https://pf-svc-reference.example.com", apiKey: "secret-key" },
       { lookback_days: 90, forward_days: 30 }
     );
 
     expect(result).toEqual({ statusCode: 200, body: '{"ok":true}' });
     expect(fetchCalls).toHaveLength(1);
-    expect(fetchCalls[0].url).toBe("https://pf-rates.example.com/exports/financial-data");
+    expect(fetchCalls[0].url).toBe("https://pf-svc-reference.example.com/exports/financial-data");
     expect(fetchCalls[0].options.headers["X-API-Key"]).toBe("secret-key");
     expect(JSON.parse(fetchCalls[0].options.payload)).toEqual({ lookback_days: 90, forward_days: 30 });
     expect(fetchCalls[0].options.muteHttpExceptions).toBe(true);

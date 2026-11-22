@@ -80,12 +80,12 @@ ever needs revisiting.
 
 ## Authentication: OAuth "Desktop app" + refresh token
 
-Same mechanism already validated in `pf-rates` for its Google Drive export (see
-`pf-rates/docs/deployment.md` and the ecosystem's `secrets/README.md`): a Service
+Same mechanism already validated in `pf-svc-reference` for its Google Drive export (see
+`pf-svc-reference/docs/deployment.md` and the ecosystem's `secrets/README.md`): a Service
 Account cannot operate the Apps Script API on behalf of a real user, so instead:
 
 1. A Google Cloud OAuth Client ID of type **Desktop app** (reuse the one already
-   created for `pf-rates`) is used for a one-time, interactive login, run from
+   created for `pf-svc-reference`) is used for a one-time, interactive login, run from
    inside `pf-sheets/` so the credential file lands in the repo checkout instead
    of the real `~/.clasprc.json` (which would collide with any other clasp
    project on the same machine):

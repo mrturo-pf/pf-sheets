@@ -4,7 +4,7 @@
  * Script globals (SpreadsheetApp, DriveApp, UrlFetchApp,
  * PropertiesService, Utilities) — that's what keeps this layer
  * unit-testable with plain Jest/Node, mirroring the `domain/` boundary
- * used in pf-rates/pf-svc-income.
+ * used in pf-svc-reference/pf-svc-income.
  *
  * Files under src/ are pushed as-is into Apps Script by `clasp`, which has
  * no `module`/`require`. The guarded `module.exports` at the bottom is a
@@ -13,8 +13,8 @@
 
 var REQUIRED_CSV_COLUMNS = ["currency_code", "rate_date", "value_clp"];
 
-// Combined pf-rates export (POST /exports/financial-data) header --
-// see pf-rates/docs/api.md for the authoritative contract. The
+// Combined pf-svc-reference export (POST /exports/financial-data) header --
+// see pf-svc-reference/docs/api.md for the authoritative contract. The
 // series_type discriminator value itself is intentionally not modeled
 // here: pf-sheets no longer branches on it (see buildValuesCsvRows).
 var REQUIRED_COMBINED_CSV_COLUMNS = ["series_type", "code", "period_date", "value"];
@@ -289,7 +289,7 @@ function resolveCombinedCsvColumns(headerRow) {
 
 /**
  * Renames specific codes as they get written into the VALUES sheet tab --
- * a presentation-only relabeling local to this spreadsheet. pf-rates'
+ * a presentation-only relabeling local to this spreadsheet. pf-svc-reference'
  * own contract, pf-db's schema, and every other consumer of the combined
  * export are completely unaffected; only what a human sees in this one
  * Sheet changes.
@@ -325,7 +325,7 @@ function applySheetCodeAlias(rawCode) {
 }
 
 /**
- * Converts every row of a combined pf-rates export CSV
+ * Converts every row of a combined pf-svc-reference export CSV
  * (series_type,code,period_date,value) into the legacy-shaped rows
  * (currency_code,rate_date,value_clp) that the existing
  * resolveCsvColumns/computeUpsertPlan pipeline already knows how to
@@ -333,16 +333,16 @@ function applySheetCodeAlias(rawCode) {
  * sheet layout (id, code, date, value, last_modified_at), no matter
  * which series_type a row came in as.
  *
- * pf-rates' own EXCHANGE_RATE / ECONOMIC_INDEX split (see
- * pf-rates/src/rates/shared/constants.py) is that service's internal
+ * pf-svc-reference' own EXCHANGE_RATE / ECONOMIC_INDEX split (see
+ * pf-svc-reference/src/rates/shared/constants.py) is that service's internal
  * classification of *how* it resolves a value -- it does NOT map onto
  * "currency vs. economic index" the way a human would expect. `UF` and
  * `UTM` are both exported there as `EXCHANGE_RATE`, even though most
  * people in Chile call them economic indices; only `IPC_CL` is actually
  * `ECONOMIC_INDEX`. An earlier version of this function filtered by
  * series_type and, as a direct consequence, silently dropped UF and UTM
- * from this sheet -- pf-sheets does not repeat pf-rates' split at all
- * anymore: every code pf-rates exports lands in the VALUES tab.
+ * from this sheet -- pf-sheets does not repeat pf-svc-reference' split at all
+ * anymore: every code pf-svc-reference exports lands in the VALUES tab.
  *
  * Only structurally malformed rows (too few columns) are skipped and
  * their 1-based line numbers reported, mirroring computeUpsertPlan's own

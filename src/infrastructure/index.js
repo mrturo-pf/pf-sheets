@@ -25,10 +25,10 @@ function getConfig(propertiesService) {
 }
 
 /**
- * Triggers the pf-rates combined financial-data export endpoint
+ * Triggers the pf-svc-reference combined financial-data export endpoint
  * (fire-and-report -- the caller decides what to do with a failed/erroring
  * call). Covers both exchange rates and economic indices in one CSV; see
- * pf-rates/docs/api.md#export-combined-exchange-rate--economic-index-data-to-google-drive.
+ * pf-svc-reference/docs/api.md#export-combined-exchange-rate--economic-index-data-to-google-drive.
  * @param {GoogleAppsScript.URL_Fetch.UrlFetchApp} urlFetchApp
  * @param {{apiBaseUrl: string, apiKey: string}} config
  * @param {{lookback_days: number, forward_days: number}} payload
@@ -120,7 +120,7 @@ function showSyncFailure(spreadsheet, message) {
 /**
  * Reads the shared secret GET_CLP's Web App endpoint compares the
  * caller-supplied `key` query param against. Kept separate from
- * `getConfig` (which covers the unrelated pf-rates sync config) --
+ * `getConfig` (which covers the unrelated pf-svc-reference sync config) --
  * this key protects a different, unrelated capability.
  * @param {GoogleAppsScript.Properties.PropertiesService} propertiesService
  * @returns {string|null}

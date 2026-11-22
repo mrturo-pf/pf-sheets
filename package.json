@@ -2,7 +2,7 @@
   "name": "pf-sheets",
   "version": "0.1.0",
   "private": true,
-  "description": "Google Apps Script (bound to a Google Sheet) source, versioned in Git and deployed via clasp. Syncs pf-rates exchange rates into a spreadsheet.",
+  "description": "Google Apps Script (bound to a Google Sheet) source, versioned in Git and deployed via clasp. Syncs pf-svc-reference exchange rates into a spreadsheet.",
   "scripts": {
     "lint": "eslint src tests",
     "test": "jest",

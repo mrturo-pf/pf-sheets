@@ -2,7 +2,7 @@
 
 Google Apps Script (bound to a Google Sheet) source, versioned in Git and deployed via
 `clasp`. Not a FastAPI microservice — this is glue code that syncs
-[`pf-rates`](https://github.com/mrturo-pf/pf-rates) exchange-rate data into a spreadsheet.
+[`pf-svc-reference`](https://github.com/mrturo-pf/pf-svc-reference) exchange-rate data into a spreadsheet.
 
 ## Scope
 
@@ -28,7 +28,7 @@ the execution model.
 ## Architecture
 
 Google Apps Script has no real module system and no ports/DTOs, but the same
-domain-vs-I/O separation used in `pf-rates`/`pf-svc-income` still applies, adapted:
+domain-vs-I/O separation used in `pf-svc-reference`/`pf-svc-income` still applies, adapted:
 
 ```
 src/
@@ -102,7 +102,7 @@ for the full model. In short:
   exist, fail loudly via `console.error(...)` and `Spreadsheet.toast(...)`. Do not call
   `SpreadsheetApp.getUi()` from synchronization code because time-driven triggers have
   no UI context.
-- Secrets (the `pf-rates` API key, the Drive `fileId`) never live in source — they come
+- Secrets (the `pf-svc-reference` API key, the Drive `fileId`) never live in source — they come
   from `PropertiesService.getScriptProperties()`, set once manually per Apps Script
   project (see [`docs/getting-started.md`](docs/getting-started.md)).
 - **Cloud cost is always the priority in cloud decisions**: this repo introduces $0 of
@@ -169,7 +169,7 @@ make push ALIAS=exchange-rates   # manual push to one target (normally CI does t
 
 See [`docs/ci.md`](docs/ci.md) for the complete guide: pipeline jobs, the `clasp`
 non-interactive auth mechanism (OAuth "Desktop app" + refresh token, same pattern as
-`pf-rates`'s Google Drive export), secret rotation, and rollback (revert the commit,
+`pf-svc-reference`'s Google Drive export), secret rotation, and rollback (revert the commit,
 let the pipeline `clasp push` the old code again — there is no Cloud Run-style traffic
 rollback here).
 
@@ -199,8 +199,8 @@ Quick reference:
 
 ## Database
 
-None — this repo has no database of its own. It calls `pf-rates` over HTTP
+None — this repo has no database of its own. It calls `pf-svc-reference` over HTTP
 (`POST /exports/financial-data`) and writes only to the Google Sheet grid (`VALUES` tab).
 `pf-db` remains the schema and migration owner for the underlying exchange-rate and
-economic-index data; `pf-rates` owns the corresponding application domain and HTTP API
+economic-index data; `pf-svc-reference` owns the corresponding application domain and HTTP API
 (see [`pf-db`](https://github.com/mrturo-pf/pf-db) for the real source of truth).
