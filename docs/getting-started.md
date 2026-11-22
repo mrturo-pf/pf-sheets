@@ -28,8 +28,8 @@ see [`ci.md`](ci.md)):
 npx clasp login --creds <path-to-oauth-desktop-client-creds.json>
 ```
 
-Use the **same OAuth "Desktop app" Client ID already created for `pf-rates`'s Google
-Drive export** (see `pf-rates/docs/deployment.md` / `secrets/README.md` at the
+Use the **same OAuth "Desktop app" Client ID already created for `pf-svc-reference`'s Google
+Drive export** (see `pf-svc-reference/docs/deployment.md` / `secrets/README.md` at the
 ecosystem root) — no need to create a new one. This produces `~/.clasprc.json`. Copy it
 to `../secrets/pf-sheets/clasprc.json` (repo-root-level `secrets/` folder, already
 gitignored) for safekeeping; this is also the file whose contents get uploaded as the
@@ -59,7 +59,7 @@ and set:
 
 | Property | Value |
 | --- | --- |
-| `PF_REFERENCE_API_KEY` | the `X-API-Key` used to call `pf-rates`'s export endpoint |
+| `PF_REFERENCE_API_KEY` | the `X-API-Key` used to call `pf-svc-reference`'s export endpoint |
 | `EXPORT_DRIVE_FILE_ID` | the Google Drive file ID of the exported **combined** CSV (`financial-data.csv`, from `POST /exports/financial-data`) |
 | `GET_CLP_API_KEY` | shared secret required as the `key` query param on the `GET_CLP` Web App endpoint (see "GET_CLP Web App deployment" below and [`api.md`](api.md)) |
 

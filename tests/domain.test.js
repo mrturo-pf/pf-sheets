@@ -314,8 +314,8 @@ describe("applySheetCodeAlias", () => {
 
 describe("buildValuesCsvRows", () => {
   it("includes EXCHANGE_RATE rows (e.g. UF, USD) alongside ECONOMIC_INDEX rows -- no series_type filtering", () => {
-    // Regression test: pf-rates classifies UF and UTM as EXCHANGE_RATE
-    // (see pf-rates/src/rates/shared/constants.py), not ECONOMIC_INDEX --
+    // Regression test: pf-svc-reference classifies UF and UTM as EXCHANGE_RATE
+    // (see pf-svc-reference/src/rates/shared/constants.py), not ECONOMIC_INDEX --
     // an earlier version of this function filtered by series_type and, as
     // a direct consequence, silently dropped UF/UTM from the VALUES tab.
     const combinedCsvRows = [
@@ -355,7 +355,7 @@ describe("buildValuesCsvRows", () => {
     ]);
   });
 
-  it("trims and upper-cases every code, aliased or not, regardless of how pf-rates sent it", () => {
+  it("trims and upper-cases every code, aliased or not, regardless of how pf-svc-reference sent it", () => {
     const combinedCsvRows = [
       ["series_type", "code", "period_date", "value"],
       ["EXCHANGE_RATE", " uf ", "2026-01-14", "38000.12"],
