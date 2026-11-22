@@ -15,7 +15,7 @@ const {
 describe("getConfig", () => {
   it("reads all three properties from the injected PropertiesService", () => {
     const store = {
-      PF_RATES_BASE_URL: "https://pf-rates.example.com",
+      PF_REFERENCE_BASE_URL: "https://pf-rates.example.com",
       PF_REFERENCE_API_KEY: "secret-key",
       EXPORT_DRIVE_FILE_ID: "drive-file-id",
     };

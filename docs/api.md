@@ -10,7 +10,7 @@ so any existing menu/time-driven trigger binding to this exact function
 name keeps working, even though it now syncs the `VALUES` tab from
 the combined export instead of exchange rates directly.
 
-1. Calls `POST {PF_RATES_BASE_URL}/exports/financial-data` on
+1. Calls `POST {PF_REFERENCE_BASE_URL}/exports/financial-data` on
    [`pf-rates`](https://github.com/mrturo-pf/pf-rates) with `{ lookback_days, forward_days }`, authenticated
    via the `PF_REFERENCE_API_KEY` Script Property. This is the **combined**
    export (exchange rates + economic indices in one CSV) -- see
