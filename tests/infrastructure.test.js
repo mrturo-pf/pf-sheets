@@ -15,8 +15,8 @@ const {
 describe("getConfig", () => {
   it("reads all three properties from the injected PropertiesService", () => {
     const store = {
-      PF_REFERENCE_BASE_URL: "https://pf-svc-reference.example.com",
-      PF_REFERENCE_API_KEY: "secret-key",
+      PF_SVC_REFERENCE_BASE_URL: "https://pf-svc-reference.example.com",
+      PF_SVC_REFERENCE_API_KEY: "secret-key",
       EXPORT_DRIVE_FILE_ID: "drive-file-id",
     };
     const fakePropertiesService = {

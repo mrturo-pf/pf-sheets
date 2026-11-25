@@ -10,9 +10,9 @@ so any existing menu/time-driven trigger binding to this exact function
 name keeps working, even though it now syncs the `VALUES` tab from
 the combined export instead of exchange rates directly.
 
-1. Calls `POST {PF_REFERENCE_BASE_URL}/exports/financial-data` on
+1. Calls `POST {PF_SVC_REFERENCE_BASE_URL}/exports/financial-data` on
    [`pf-svc-reference`](https://github.com/mrturo-pf/pf-svc-reference) with `{ lookback_days, forward_days }`, authenticated
-   via the `PF_REFERENCE_API_KEY` Script Property. This is the **combined**
+   via the `PF_SVC_REFERENCE_API_KEY` Script Property. This is the **combined**
    export (exchange rates + economic indices in one CSV) -- see
    [`pf-svc-reference/docs/api.md`](https://github.com/mrturo-pf/pf-svc-reference/blob/main/docs/api.md) for the endpoint contract.
 2. Reads the resulting CSV from Google Drive (`EXPORT_DRIVE_FILE_ID` Script Property).
