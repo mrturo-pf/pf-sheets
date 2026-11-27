@@ -2,7 +2,7 @@
 # pf-sheets — Apps Script deploy pipeline (clasp push)
 # ============================================================
 #
-# This is a repo-local workflow, NOT a caller into pf-common's
+# This is a repo-local workflow, NOT a caller into pf-svc-common's
 # deploy-reusable.yml — that reusable is 100% Docker/Cloud Run and does not
 # apply here (there is no container, no Cloud Run service, no Cloud SQL).
 # See ../../docs/ci.md for the full rationale.

@@ -1,7 +1,7 @@
 # GitHub Actions Workflows
 
 This directory contains the CI/CD workflow for `pf-sheets`. Unlike `pf-svc-reference` and
-`pf-svc-income`, this is **not** a thin caller into `pf-common`'s reusable workflows —
+`pf-svc-income`, this is **not** a thin caller into `pf-svc-common`'s reusable workflows —
 those are 100% Docker/Cloud Run and don't apply to an Apps Script project pushed via
 `clasp` (there's no container, no Cloud Run service, no Cloud SQL). This workflow is
 self-contained instead.
